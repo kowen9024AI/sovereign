@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sovereign.local/contracts/experience.v0.1.schema.json",
+  "title": "Sovereign Experience v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "experience_id",
+    "producer",
+    "task_class",
+    "started_at",
+    "completed_at",
+    "outcome",
+    "artifact_refs",
+    "authority"
+  ],
+  "properties": {
+    "schema_version": {"const": "sovereign.experience.v0.1"},
+    "experience_id": {"type": "string", "minLength": 1},
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["harness", "agent", "runtime"],
+      "properties": {
+        "harness": {"type": "string", "minLength": 1},
+        "agent": {"type": "string", "minLength": 1},
+        "runtime": {"type": "string", "minLength": 1},
+        "model": {"type": ["string", "null"]}
+      }
+    },
+    "task_class": {"type": "string", "minLength": 1},
+    "scope_ref": {"type": ["string", "null"]},
+    "started_at": {"type": "string", "format": "date-time"},
+    "completed_at": {"type": "string", "format": "date-time"},
+    "outcome": {"enum": ["SUCCEEDED", "FAILED", "BLOCKED", "CANCELLED"]},
+    "artifact_refs": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "evidence_refs": {"type": "array", "items": {"type": "string", "minLength": 1}, "default": []},
+    "procedure_candidate_ref": {"type": ["string", "null"]},
+    "training_candidate_ref": {"type": ["string", "null"]},
+    "authority": {"const": "NONE"}
+  }
+}
