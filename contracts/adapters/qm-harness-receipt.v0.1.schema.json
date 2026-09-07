@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sovereign.local/contracts/adapters/qm-harness-receipt.v0.1.schema.json",
+  "title": "Sovereign QM Harness Receipt v0.1",
+  "description": "A credential-free, portable receipt describing one terminal QM (Quartermaster) run. It is the only input the QM adapter accepts. It carries provider identity and evidence references; it carries no authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "receipt_id",
+    "captured_at_ms",
+    "deployment",
+    "scope",
+    "principal",
+    "harness",
+    "sandbox",
+    "session",
+    "run",
+    "tool_receipts",
+    "security",
+    "durable_refs",
+    "credential_material_present",
+    "authority"
+  ],
+  "properties": {
+    "schema_version": {"const": "sovereign.adapter.qm-harness-receipt.v0.1"},
+    "receipt_id": {"type": "string", "minLength": 1},
+    "captured_at_ms": {"$ref": "#/$defs/epoch_ms"},
+    "task_class": {"type": "string", "minLength": 1, "default": "qm.turn"},
+    "deployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deployment_ref", "qm_version"],
+      "properties": {
+        "deployment_ref": {"type": "string", "minLength": 1, "description": "Operator-chosen stable label for the QM deployment. Never a hostname carrying credentials."},
+        "qm_version": {"type": "string", "minLength": 1, "description": "Upstream package version or commit of yc-software/qm running the deployment."},
+        "org_scope_id": {"$ref": "#/$defs/scope_id"}
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope_id", "kind", "ref"],
+      "properties": {
+        "scope_id": {"$ref": "#/$defs/scope_id"},
+        "kind": {"$ref": "#/$defs/scope_kind"},
+        "ref": {"type": "string", "minLength": 1},
+        "owner_principal_id": {"type": ["string", "null"]}
+      }
+    },
+    "principal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["principal_id", "principal_type"],
+      "properties": {
+        "principal_id": {"type": "string", "minLength": 1},
+        "principal_type": {"enum": ["internal", "guest"]}
+      }
+    },
+    "harness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile_id", "control_transport", "tool_transport"],
+      "properties": {
+        "profile_id": {"type": "string", "minLength": 1, "description": "QM HarnessAdapterProfile.id, e.g. pi, opencode, codex, claude-code, mock."},
+        "control_transport": {"enum": ["mock", "in-process", "sdk", "http", "json-rpc", "api"]},
+        "tool_transport": {"enum": ["mock", "in-process", "plugin", "dynamic", "in-process-mcp", "mcp"]},
+        "transcript_format": {"type": ["string", "null"]},
+        "model_ref": {"type": ["string", "null"], "description": "Provider/model identifier as reported by QM. Null when unknown."}
+      }
+    },
+    "sandbox": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sandbox_ref", "backend"],
+      "properties": {
+        "sandbox_ref": {"type": "string", "minLength": 1},
+        "backend": {"type": "string", "minLength": 1},
+        "image_ref": {"type": ["string", "null"]}
+      }
+    },
+    "session": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["session_id"],
+      "properties": {
+        "session_id": {"type": "string", "minLength": 1},
+        "surface": {"enum": ["slack", "web", "api", "cron", "webhook", "watch", "unknown", null]}
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id", "status", "attempts", "created_at_ms", "started_at_ms", "finished_at_ms"],
+      "properties": {
+        "run_id": {"type": "string", "minLength": 1},
+        "status": {"enum": ["done", "failed"], "description": "Terminal QM RunStatus only. pending/running runs are not receipts."},
+        "attempts": {"type": "integer", "minimum": 1},
+        "max_attempts": {"type": ["integer", "null"], "minimum": 1},
+        "dedup_key": {"type": ["string", "null"]},
+        "worker_id": {"type": ["string", "null"]},
+        "created_at_ms": {"$ref": "#/$defs/epoch_ms"},
+        "started_at_ms": {"$ref": "#/$defs/epoch_ms"},
+        "finished_at_ms": {"$ref": "#/$defs/epoch_ms"},
+        "stopped": {"type": "boolean", "default": false, "description": "HarnessTurnResult.stopped: the turn was aborted by the principal."},
+        "paused_on_approval": {"type": "boolean", "default": false, "description": "HarnessTurnResult.pausedOnApproval: the run ended waiting on human approval."},
+        "pending_approval_count": {"type": "integer", "minimum": 0, "default": 0},
+        "model_calls": {"type": ["integer", "null"], "minimum": 0},
+        "reap_outcome": {"enum": ["requeued", "parked", null]},
+        "tasks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["task_id", "status"],
+            "properties": {
+              "task_id": {"type": "string", "minLength": 1},
+              "status": {"enum": ["pending", "in_progress", "completed", "skipped", "failed"]},
+              "origin_run_id": {"type": ["string", "null"]}
+            }
+          },
+          "default": []
+        }
+      }
+    },
+    "tool_receipts": {
+      "type": "array",
+      "description": "One entry per tool ledger cell (run, attempt, call index). Output is referenced by digest only.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["attempt", "call_index", "tool", "output_sha256"],
+        "properties": {
+          "attempt": {"type": "integer", "minimum": 1},
+          "call_index": {"type": "integer", "minimum": 0},
+          "tool": {"type": "string", "minLength": 1},
+          "output_sha256": {"$ref": "#/$defs/sha256"},
+          "effect_class": {"enum": ["READ", "WRITE", "EXECUTE", "NETWORK", "APPROVAL_PAUSED", "DENIED", "UNKNOWN"], "default": "UNKNOWN"},
+          "cached": {"type": "boolean", "default": false}
+        }
+      }
+    },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["org_posture", "effective_posture"],
+      "properties": {
+        "org_posture": {"$ref": "#/$defs/posture"},
+        "scope_posture": {"anyOf": [{"$ref": "#/$defs/posture"}, {"type": "null"}]},
+        "effective_posture": {"$ref": "#/$defs/posture"},
+        "command_policy_denials": {"type": "integer", "minimum": 0, "default": 0}
+      }
+    },
+    "audit_refs": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "default": [],
+      "description": "Opaque references into the QM audit log (action/resource/at), never the events themselves."
+    },
+    "durable_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "ref"],
+        "properties": {
+          "kind": {"enum": ["git_commit", "pull_request", "file", "app_deployment", "message", "url", "other"]},
+          "ref": {"type": "string", "minLength": 1},
+          "sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]}
+        }
+      }
+    },
+    "credential_material_present": {
+      "const": false,
+      "description": "The reporter asserts that no keychain values, tokens, cookies, or provider secrets appear anywhere in this receipt. The adapter independently rescans and rejects on suspicion."
+    },
+    "authority": {"const": "NONE"}
+  },
+  "$defs": {
+    "epoch_ms": {"type": "integer", "minimum": 0},
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "scope_kind": {"enum": ["personal", "channel", "team", "org", "group"]},
+    "scope_id": {"type": "string", "pattern": "^(personal|channel|team|org|group):.+$"},
+    "posture": {"enum": ["strict", "auto", "dangerous"]}
+  }
+}

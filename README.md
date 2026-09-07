@@ -107,9 +107,25 @@ REGISTER -> REFERENCE -> QUALIFY -> BIND
 
 not copy-and-paste coupling.
 
+## Adapters
+
+| Adapter | Maturity | Work order |
+|---|---|---|
+| [QM](adapters/qm/README.md) | `STRUCTURALLY_VALIDATED` | [WO-MSK-HARNESS-QM-01A](docs/work-orders/WO-MSK-HARNESS-QM-01A.md) |
+| GBrain | not started | |
+| Memorable | not started | |
+| River AI | not started | |
+
+Adapter contracts live under `contracts/adapters/`. Run the suite with:
+
+```bash
+pip install -r requirements-dev.txt
+python3 -m pytest -q
+```
+
 ## Status
 
-`BOOTSTRAP / CONTRACT DESIGN`
+`BOOTSTRAP / CONTRACT DESIGN` + first adapter structurally validated
 
 No production authority is implemented. No external provider is trusted by default. No automatic promotion, canonical knowledge write, model training, or recursive permission expansion exists.
 

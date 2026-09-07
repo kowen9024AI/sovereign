@@ -34,7 +34,7 @@ Initial targets:
 
 | Surface | Candidate | Initial relationship |
 |---|---|---|
-| multiplayer harness | QM | adapter candidate |
+| multiplayer harness | QM | `STRUCTURALLY_VALIDATED` (`adapters/qm/`) |
 | working knowledge | GBrain | adapter candidate |
 | procedural memory | Memorable | adapter candidate |
 | model specialization | River AI | adapter candidate |

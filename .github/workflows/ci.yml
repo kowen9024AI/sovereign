@@ -1,0 +1,26 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip && pip install -r requirements-dev.txt
+      - run: python -m pytest -q
+      - name: adapter CLI smoke
+        run: |
+          python -m adapters.qm adapters/qm/fixtures/valid/done-succeeded.json > /dev/null
+          if python -m adapters.qm <(python -c "import json;print(json.dumps(json.load(open('adapters/qm/fixtures/invalid/url-userinfo-credential.json'))['receipt']))") > /dev/null; then
+            echo "expected rejection" && exit 1
+          fi
