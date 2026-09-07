@@ -1,0 +1,62 @@
+{
+  "COORDINATOR": {
+    "authority": "NONE",
+    "executor_id": "executor:claude-code",
+    "exit_code": 0,
+    "run_id": "run:coordinator-5eecedfd-643f-4e47-8379-d5bbc10f1c94",
+    "session_ref": "1b4530e2-c4d8-40c8-af53-cf81409e3937",
+    "usage": {
+      "cost_units": 0.189464,
+      "executor_turns": 2,
+      "model_calls": 2,
+      "token_units": 7.595,
+      "wall_seconds": 17.129
+    },
+    "wall_seconds": 17.129
+  },
+  "IMPLEMENTER": {
+    "authority": "NONE",
+    "executor_id": "executor:codex",
+    "exit_code": 0,
+    "run_id": "run:implementer-8f9659a4-7f69-42a3-b1e8-f88ff013ec32",
+    "session_ref": "codex-thread:01a07d08-6b45-7232-aa0d-fdf332993f97",
+    "usage": {
+      "cost_units": null,
+      "executor_turns": 1,
+      "model_calls": null,
+      "token_units": 94.24,
+      "wall_seconds": 520.287
+    },
+    "wall_seconds": 520.287
+  },
+  "REPAIR_IMPLEMENTER": {
+    "authority": "NONE",
+    "executor_id": "executor:codex",
+    "exit_code": 0,
+    "run_id": "run:repair_implementer-a6b4e7f9-bd8a-47cd-ac52-130ab79eddd2",
+    "session_ref": "codex-thread:01a07d10-6306-74f2-8a11-3a9d2ecb4760",
+    "usage": {
+      "cost_units": null,
+      "executor_turns": 1,
+      "model_calls": null,
+      "token_units": 89.827,
+      "wall_seconds": 44.288
+    },
+    "wall_seconds": 44.288
+  },
+  "REVIEWER": {
+    "authority": "NONE",
+    "executor_id": "executor:claude-code",
+    "exit_code": 0,
+    "run_id": "run:reviewer-fd88b4dc-5cb2-4ef4-86ac-a75be8adebdf",
+    "session_ref": "0ce36e82-a779-49e8-af4f-860389d9516b",
+    "usage": {
+      "cost_units": 0.552125,
+      "executor_turns": 13,
+      "model_calls": 13,
+      "token_units": 160.45,
+      "wall_seconds": 68.562
+    },
+    "wall_seconds": 68.562
+  }
+}
