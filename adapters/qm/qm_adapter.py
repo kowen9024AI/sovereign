@@ -115,6 +115,10 @@ _CREDENTIAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 
 _FORBIDDEN_KEY_FRAGMENTS = ("keychain", "secret", "token", "password", "passwd", "cookie", "credential")
 
+# Public aliases so other Sovereign modules (e.g. sscm.artifacts) reuse one credential policy.
+CREDENTIAL_PATTERNS = _CREDENTIAL_PATTERNS
+FORBIDDEN_KEY_FRAGMENTS = _FORBIDDEN_KEY_FRAGMENTS
+
 
 def _walk(node: Any, path: str = "$"):
     if isinstance(node, Mapping):

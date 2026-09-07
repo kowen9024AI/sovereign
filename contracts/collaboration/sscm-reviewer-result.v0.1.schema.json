@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sovereign.local/contracts/collaboration/sscm-reviewer-result.v0.1.schema.json",
+  "title": "Sovereign SSCM Reviewer Result v0.1",
+  "description": "Structured verdict returned by a REVIEWER executor. Evidence only; not an evaluation.v0.1 and not authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["role", "reviewed_revision", "verdict", "findings", "blocking_findings", "tests_run", "summary", "authority"],
+  "properties": {
+    "role": {"const": "REVIEWER"},
+    "reviewed_revision": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},
+    "verdict": {"enum": ["ACCEPT", "REPAIR_REQUIRED"]},
+    "findings": {"type": "array", "items": {"type": "string"}},
+    "blocking_findings": {"type": "array", "items": {"type": "string"}},
+    "tests_run": {"type": "array", "items": {"type": "string"}},
+    "summary": {"type": "string", "maxLength": 2000},
+    "authority": {"const": "NONE"}
+  }
+}
