@@ -5,7 +5,7 @@
 | Work order | `WO-MSK-HARNESS-QM-01A` |
 | Repository | `kowen9024AI/sovereign` |
 | Increment | first of the `HARNESS-QM` series |
-| Result | `STRUCTURALLY_VALIDATED` adapter for QM; `CANDIDATE_READY` pending human review |
+| Result | `STRUCTURALLY_VALIDATED` adapter for QM; `CANDIDATE_READY`, PR #1, hosted CI green; merge is human-gated |
 | Date | 2026-09-06 |
 
 ## Scope derivation
@@ -66,7 +66,7 @@ python3 -m adapters.qm <invalid url-userinfo receipt>                  -> exit 1
 - No receipt exporter exists on the QM side. Receipts in this WO are hand-authored fixtures whose shape follows upstream types, not captured production output.
 - `task_class` is reporter-declared; QM has no native task taxonomy.
 - Credential rescan is pattern-based and conservative; false positives are accepted as the safe direction.
-- Hosted CI has not yet run on this branch at the time of writing (branch pushed with this report; result recorded in the PR).
+- Hosted CI: run `34071855654` on PR #1 head `8e55fc8`, `ci` job success (14s).
 
 ## Next
 
