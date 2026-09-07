@@ -1,0 +1,32 @@
+{
+  "COORDINATOR": {
+    "authority": "NONE",
+    "cost_units": 0.441623,
+    "executor_id": "executor:claude-code",
+    "exit_code": 0,
+    "model_calls": 2,
+    "run_id": "run:coordinator-7285611c-47e6-47c5-94b0-08fe2c5090f6",
+    "session_ref": "5e16cf71-2b26-480b-844c-ce959534f061",
+    "wall_seconds": 19.975
+  },
+  "IMPLEMENTER": {
+    "authority": "NONE",
+    "cost_units": null,
+    "executor_id": "executor:codex",
+    "exit_code": 0,
+    "model_calls": 1,
+    "run_id": "run:implementer-e649b792-56d7-43d1-a676-ec125c7f34db",
+    "session_ref": "codex-thread:01a079d4-db7c-7af1-befb-1670155aca7a",
+    "wall_seconds": 32.463
+  },
+  "REVIEWER": {
+    "authority": "NONE",
+    "cost_units": 0.30052399999999996,
+    "executor_id": "executor:claude-code",
+    "exit_code": 0,
+    "model_calls": 6,
+    "run_id": "run:reviewer-fb287603-4379-4ef6-b7fd-cf92a8c6d617",
+    "session_ref": "37ffd027-794a-4d02-989e-e059e01a86ab",
+    "wall_seconds": 27.837
+  }
+}

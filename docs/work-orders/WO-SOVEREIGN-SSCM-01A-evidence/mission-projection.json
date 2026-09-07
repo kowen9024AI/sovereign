@@ -1,0 +1,77 @@
+{
+  "budget": {
+    "max_active_actors": 1,
+    "max_consecutive_failures": 1,
+    "max_model_calls": 30,
+    "max_repair_loops": 0,
+    "max_token_or_cost_units": 5.0,
+    "max_turns": 8,
+    "max_wall_seconds": 2820
+  },
+  "distinct_actors": [
+    "actor:coordinator",
+    "actor:implementer",
+    "actor:reviewer",
+    "host:sscm-mission-controller"
+  ],
+  "event_count": 8,
+  "event_ids_causal": [
+    "evt-8b805f19-ff40-4770-a461-f108cac6046e",
+    "evt-7988ea36-623a-4d3d-80b8-f20fa8641c20",
+    "evt-f5681891-230f-4b85-ae99-64992ba98eb4",
+    "evt-53a220a4-a922-4f1c-981d-07d403c44942",
+    "evt-dfa24885-0143-47a4-967c-7cf526842a71",
+    "evt-c26c26a5-7818-4ad6-a300-5966c48e8b8a",
+    "evt-643c3f48-ddd4-4dd0-9e15-ab602e320687",
+    "evt-1d9269cb-17e1-4258-ad79-a2144e238030"
+  ],
+  "failures_consecutive": 0,
+  "mission_id": "mission-sscm-01a-live-4",
+  "status": "SUCCEEDED",
+  "tasks": {
+    "mission-sscm-01a-live-4": {
+      "blocker_code": null,
+      "candidate_revision": "3de5b82552f39d6c319f5171ed22911b4ca89d75",
+      "claimed_by": null,
+      "event_count": 1,
+      "executor_ref": null,
+      "last_event_id": "evt-1d9269cb-17e1-4258-ad79-a2144e238030",
+      "last_verb": "COMPLETE",
+      "status": "SUCCEEDED",
+      "task_id": "mission-sscm-01a-live-4",
+      "workspace_ref": null
+    },
+    "task:implement": {
+      "blocker_code": null,
+      "candidate_revision": "3de5b82552f39d6c319f5171ed22911b4ca89d75",
+      "claimed_by": "actor:implementer",
+      "event_count": 4,
+      "executor_ref": "executor:codex",
+      "last_event_id": "evt-53a220a4-a922-4f1c-981d-07d403c44942",
+      "last_verb": "OBSERVE",
+      "status": "SUCCEEDED",
+      "task_id": "task:implement",
+      "workspace_ref": "/home/kowen9024/sovereign/.sovereign/runs/mission-sscm-01a-live-4/workspaces/implementer"
+    },
+    "task:review": {
+      "blocker_code": null,
+      "candidate_revision": "3de5b82552f39d6c319f5171ed22911b4ca89d75",
+      "claimed_by": "actor:reviewer",
+      "event_count": 3,
+      "executor_ref": "executor:claude-code",
+      "last_event_id": "evt-643c3f48-ddd4-4dd0-9e15-ab602e320687",
+      "last_verb": "OBSERVE",
+      "status": "SUCCEEDED",
+      "task_id": "task:review",
+      "workspace_ref": "/home/kowen9024/sovereign/.sovereign/runs/mission-sscm-01a-live-4/workspaces/reviewer"
+    }
+  },
+  "terminal_event_id": "evt-1d9269cb-17e1-4258-ad79-a2144e238030",
+  "turns": 5,
+  "verbs": {
+    "CLAIM": 2,
+    "COMPLETE": 3,
+    "OBSERVE": 2,
+    "PUBLISH": 1
+  }
+}

@@ -273,3 +273,30 @@ def test_scan_allows_token_counts_but_not_token_values():
         scan_json({"provider_token": "anything"})
     with pytest.raises(CredentialMaterialSuspected):
         scan_json({"note": "Authorization: Bearer abcdefghijklmnopqrstuvwxyz0123"})
+
+
+def test_executor_schema_drops_meta_and_types_consts():
+    from sscm.contracts import load_schema
+    from sscm.executors import executor_schema
+    from sscm.mission import COORDINATOR_SCHEMA, IMPLEMENTER_SCHEMA, REVIEWER_SCHEMA
+
+    for path in (COORDINATOR_SCHEMA, IMPLEMENTER_SCHEMA, REVIEWER_SCHEMA):
+        s = executor_schema(load_schema(path))
+        assert "$schema" not in s and "$id" not in s
+
+        def walk(node):
+            if isinstance(node, dict):
+                if "const" in node or "enum" in node:
+                    assert "type" in node, node
+                for v in node.values():
+                    walk(v)
+            elif isinstance(node, list):
+                for v in node:
+                    walk(v)
+        walk(s)
+    # semantics preserved: the same instance validates against both forms
+    from jsonschema import Draft202012Validator
+    inst = {"role": "IMPLEMENTER", "status": "SUCCEEDED", "claimed_candidate_revision": "a" * 40, "changed_files": [],
+            "tests_run": [], "blockers": [], "summary": "s", "authority": "NONE"}
+    Draft202012Validator(load_schema(IMPLEMENTER_SCHEMA)).validate(inst)
+    Draft202012Validator(executor_schema(load_schema(IMPLEMENTER_SCHEMA))).validate(inst)

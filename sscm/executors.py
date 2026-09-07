@@ -110,13 +110,35 @@ def _run(cmd: list[str], cwd: Path | None = None, timeout: int = 60, env: Mappin
     return subprocess.run(cmd, cwd=str(cwd) if cwd else None, capture_output=True, text=True, timeout=timeout, env=dict(env or child_env()))
 
 
+def executor_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
+    """Schema as handed to an executor CLI.
+
+    Drops meta keys some CLI validators cannot resolve and gives every const/enum an
+    explicit ``type`` (strict provider validators require it). Semantics are unchanged.
+    """
+    def norm(node: Any) -> Any:
+        if isinstance(node, dict):
+            out = {k: norm(v) for k, v in node.items() if k not in ("$schema", "$id")}
+            if ("const" in out or "enum" in out) and "type" not in out:
+                vals = [out["const"]] if "const" in out else list(out["enum"])
+                if all(isinstance(v, str) for v in vals):
+                    out["type"] = "string"
+                elif all(isinstance(v, bool) for v in vals):
+                    out["type"] = "boolean"
+            return out
+        if isinstance(node, list):
+            return [norm(v) for v in node]
+        return node
+    return norm(dict(schema))
+
+
 def _instruction_prompt(task: ExecutorTask) -> str:
     return (
         f"You are the {task.role} in a Sovereign SSCM mission. Follow the structured instruction below exactly. "
         "Your final response MUST be a single JSON object conforming to the given result schema, with no prose around it. "
         "Set authority to \"NONE\". Do not exceed the stated scope.\n\n"
         f"INSTRUCTION (JSON):\n{json.dumps(task.instruction, indent=2, sort_keys=True)}\n\n"
-        f"RESULT SCHEMA (JSON Schema):\n{json.dumps(task.output_schema, indent=2, sort_keys=True)}\n"
+        f"RESULT SCHEMA (JSON Schema):\n{json.dumps(executor_schema(task.output_schema), indent=2, sort_keys=True)}\n"
     )
 
 
@@ -196,20 +218,21 @@ class ClaudeCodeExecutor:
             tools = ["Bash", "Read", "Glob", "Grep"]
             allowed = ["Bash(git:*)", "Bash(cat:*)", "Bash(ls:*)", "Bash(wc:*)", "Bash(sha256sum:*)", "Read", "Glob", "Grep"]
         cmd = [
-            self.binary, "-p", "--output-format", "json", "--json-schema", json.dumps(task.output_schema),
+            self.binary, "-p", "--output-format", "json", "--json-schema", json.dumps(executor_schema(task.output_schema)),
             "--permission-mode", "dontAsk", "--session-id", session_id, "--no-session-persistence",
             "--max-turns", str(max(4, min(40, task.timeout_seconds // 15))),
         ]
+        # variadic options (--tools, --allowedTools, --add-dir) would swallow a trailing prompt
+        # argument, so every option uses the --opt=value form and the prompt goes in on stdin.
         if tools == [""]:
-            cmd += ["--tools", ""]
+            cmd += ["--tools="]
         else:
-            cmd += ["--tools", ",".join(tools), "--allowedTools", *allowed, "--restricted"]
+            cmd += ["--tools=" + ",".join(tools), "--allowedTools=" + ",".join(allowed), "--restricted"]
         if self.model:
-            cmd += ["--model", self.model]
+            cmd += ["--model=" + self.model]
         for d in task.extra_writable_dirs:
-            cmd += ["--add-dir", str(d)]
-        cmd.append(_instruction_prompt(task))
-        return _spawn(self.executor_id, task, cmd, session_hint=session_id, parse=_parse_claude)
+            cmd += ["--add-dir=" + str(d)]
+        return _spawn(self.executor_id, task, cmd, session_hint=session_id, parse=_parse_claude, stdin_text=_instruction_prompt(task))
 
 
 def _parse_claude(stdout: str, session_hint: str | None) -> tuple[dict[str, Any] | None, str | None, int | None, float | None]:
@@ -271,7 +294,7 @@ class CodexExecutor:
         log_dir = task.log_dir or task.cwd
         schema_path = log_dir / f"{task.run_id}.output-schema.json"
         last_path = log_dir / f"{task.run_id}.last-message.json"
-        schema_path.write_text(json.dumps(task.output_schema), encoding="utf-8")
+        schema_path.write_text(json.dumps(executor_schema(task.output_schema)), encoding="utf-8")
         cmd = [
             self.binary, "exec", "-C", str(task.cwd),
             "--sandbox", "workspace-write" if task.write_allowed else "read-only",
@@ -338,7 +361,7 @@ class MockExecutor:
 # --------------------------------------------------------------------------
 
 
-def _spawn(executor_id: str, task: ExecutorTask, cmd: list[str], *, session_hint: str | None, parse) -> ExecutorRun:
+def _spawn(executor_id: str, task: ExecutorTask, cmd: list[str], *, session_hint: str | None, parse, stdin_text: str | None = None) -> ExecutorRun:
     log_dir = task.log_dir or task.cwd
     log_dir.mkdir(parents=True, exist_ok=True)
     out_p = log_dir / f"{task.run_id}.stdout.log"
@@ -346,7 +369,8 @@ def _spawn(executor_id: str, task: ExecutorTask, cmd: list[str], *, session_hint
     t0 = time.time()
     try:
         with out_p.open("w", encoding="utf-8") as out, err_p.open("w", encoding="utf-8") as err:
-            proc = subprocess.run(cmd, cwd=str(task.cwd), stdout=out, stderr=err, stdin=subprocess.DEVNULL,
+            proc = subprocess.run(cmd, cwd=str(task.cwd), stdout=out, stderr=err,
+                                  input=stdin_text, stdin=None if stdin_text is not None else subprocess.DEVNULL,
                                   env=child_env(), timeout=task.timeout_seconds, text=True)
         code = proc.returncode
         error = None

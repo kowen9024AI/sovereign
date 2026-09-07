@@ -2,7 +2,13 @@
 
 ## Status
 
-Portable architecture and contract bootstrap. No runtime, provider credential, training authority, knowledge authority, or automatic promotion is created by this document.
+`v0.1 IMPLEMENTED + LOCALLY QUALIFIED` — see [`work-orders/WO-SOVEREIGN-SSCM-01A-REPORT.md`](work-orders/WO-SOVEREIGN-SSCM-01A-REPORT.md) (`SOVEREIGN_SSCM_LOCAL_A2A_QUALIFIED`). The `sscm/` package provides the SQLite blackboard, executor contract with Claude Code and Codex adapters, isolated Git workspaces, the frozen 01A mission controller, and experience conversion. No provider credential, training authority, knowledge authority, or automatic promotion is created.
+
+```bash
+python3 -m sscm.local_cli capabilities                      # read-only executor discovery
+python3 -m sscm.local_cli dogfood --executors mock --base $(git rev-parse HEAD)   # offline wiring check
+python3 -m sscm.local_cli dogfood --executors live --base <canonical-sha>         # real Claude/Codex roster
+```
 
 ## Thesis
 

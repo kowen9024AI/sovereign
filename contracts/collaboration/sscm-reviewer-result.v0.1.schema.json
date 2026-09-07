@@ -5,15 +5,57 @@
   "description": "Structured verdict returned by a REVIEWER executor. Evidence only; not an evaluation.v0.1 and not authority.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["role", "reviewed_revision", "verdict", "findings", "blocking_findings", "tests_run", "summary", "authority"],
+  "required": [
+    "role",
+    "reviewed_revision",
+    "verdict",
+    "findings",
+    "blocking_findings",
+    "tests_run",
+    "summary",
+    "authority"
+  ],
   "properties": {
-    "role": {"const": "REVIEWER"},
-    "reviewed_revision": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},
-    "verdict": {"enum": ["ACCEPT", "REPAIR_REQUIRED"]},
-    "findings": {"type": "array", "items": {"type": "string"}},
-    "blocking_findings": {"type": "array", "items": {"type": "string"}},
-    "tests_run": {"type": "array", "items": {"type": "string"}},
-    "summary": {"type": "string", "maxLength": 2000},
-    "authority": {"const": "NONE"}
+    "role": {
+      "const": "REVIEWER",
+      "type": "string"
+    },
+    "reviewed_revision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{7,40}$"
+    },
+    "verdict": {
+      "enum": [
+        "ACCEPT",
+        "REPAIR_REQUIRED"
+      ],
+      "type": "string"
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "blocking_findings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "tests_run": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "authority": {
+      "const": "NONE",
+      "type": "string"
+    }
   }
 }

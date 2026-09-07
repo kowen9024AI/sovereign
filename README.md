@@ -125,6 +125,10 @@ REGISTER -> REFERENCE -> QUALIFY -> BIND
 
 not copy-and-paste coupling.
 
+## Swarm Control Mesh (SSCM)
+
+`sscm/` coordinates heterogeneous local coding agents through an append-only blackboard and artifact-bound handoffs. Executors keep their native provider logins; the mesh stores coordination facts and digests, never transcripts or credentials. First live qualification: [WO-SOVEREIGN-SSCM-01A](docs/work-orders/WO-SOVEREIGN-SSCM-01A-REPORT.md). Design: [docs/SSCM.md](docs/SSCM.md).
+
 ## Adapters
 
 | Adapter | Maturity | Work order |

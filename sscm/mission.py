@@ -8,6 +8,8 @@ path fails closed into a BLOCKED terminal mission state with a blocker code.
 
 from __future__ import annotations
 
+import shutil
+import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -181,7 +183,13 @@ class MissionController:
             "required_fields": {"schema_version": "sovereign.sscm-coordinator-instruction.v0.1", "role": "COORDINATOR", "target_role": "IMPLEMENTER", "allowed_files": [spec.target_file], "expected_content": {spec.target_file: spec.expected_content}, "commit_required": True, "authority": "NONE"},
             "constraints": ["Do not run tools.", "Do not widen allowed_files.", "verification_requirements must describe host-side Git checks (changed file set, exact content, clean worktree, descent from base)."],
         }
-        run, receipt = self._executor_run("COORDINATOR", task_id, instruction_in, COORDINATOR_SCHEMA, self.run.root, False, [])
+        # The coordinator has no tools and must not inherit any repository context: run it from a
+        # neutral empty directory outside every checkout (a CLI may auto-collect git status of its cwd).
+        neutral = Path(tempfile.mkdtemp(prefix="sscm-coordinator-"))
+        try:
+            run, receipt = self._executor_run("COORDINATOR", task_id, instruction_in, COORDINATOR_SCHEMA, neutral, False, [])
+        finally:
+            shutil.rmtree(neutral, ignore_errors=True)
         result = self._validate_result("COORDINATOR", run, COORDINATOR_SCHEMA, "COORDINATOR_RESULT_INVALID")
         if result["mission_id"] != self.mission_id or result["task_id"] != task_id:
             raise MissionAborted("COORDINATOR_RESULT_INVALID", "mission/task identity mismatch")

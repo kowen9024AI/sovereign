@@ -19,7 +19,7 @@ def test_collaboration_schema_well_formed_and_authority_none(path):
     schema = json.loads(path.read_text(encoding="utf-8"))
     Draft202012Validator.check_schema(schema)
     assert schema["additionalProperties"] is False
-    assert schema["properties"]["authority"] == {"const": "NONE"}
+    assert schema["properties"]["authority"]["const"] == "NONE"
     assert "authority" in schema["required"]
 
 
