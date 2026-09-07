@@ -1,0 +1,104 @@
+{
+  "_expect": "CREDENTIAL_MATERIAL_SUSPECTED",
+  "receipt": {
+    "schema_version": "sovereign.adapter.qm-harness-receipt.v0.1",
+    "receipt_id": "bad-0005",
+    "captured_at_ms": 1757200000000,
+    "task_class": "coding.repo-change",
+    "deployment": {
+      "deployment_ref": "acme-qm-prod",
+      "qm_version": "0.1.0+95b5a6a",
+      "org_scope_id": "org:acme"
+    },
+    "scope": {
+      "scope_id": "personal:u_alice",
+      "kind": "personal",
+      "ref": "u_alice",
+      "owner_principal_id": "u_alice"
+    },
+    "principal": {
+      "principal_id": "u_alice",
+      "principal_type": "internal"
+    },
+    "harness": {
+      "profile_id": "claude-code",
+      "control_transport": "sdk",
+      "tool_transport": "in-process-mcp",
+      "transcript_format": "claude-code-jsonl",
+      "model_ref": "anthropic/claude-opus-5"
+    },
+    "sandbox": {
+      "sandbox_ref": "sbx-personal-u_alice",
+      "backend": "fly-machine",
+      "image_ref": "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    },
+    "session": {
+      "session_id": "sess-7f3a",
+      "surface": "web"
+    },
+    "run": {
+      "run_id": "run-01J9X",
+      "status": "done",
+      "attempts": 1,
+      "max_attempts": 3,
+      "dedup_key": null,
+      "worker_id": "worker-2",
+      "created_at_ms": 1757199000000,
+      "started_at_ms": 1757199001000,
+      "finished_at_ms": 1757199845000,
+      "stopped": false,
+      "paused_on_approval": false,
+      "pending_approval_count": 0,
+      "model_calls": 14,
+      "reap_outcome": null,
+      "tasks": [
+        {
+          "task_id": "task-1",
+          "status": "completed",
+          "origin_run_id": "run-01J9X"
+        }
+      ]
+    },
+    "tool_receipts": [
+      {
+        "attempt": 1,
+        "call_index": 0,
+        "tool": "execute",
+        "output_sha256": "c7b68ac37f364473e922936708e7f43c293dd07b295171566c07ff5fe024fab9",
+        "effect_class": "READ",
+        "cached": false
+      },
+      {
+        "attempt": 1,
+        "call_index": 1,
+        "tool": "execute",
+        "output_sha256": "993c9eb42f6efa07b7501be8a0378748d2bb74a61a071f06e7df25c8951506f2",
+        "effect_class": "WRITE",
+        "cached": false
+      }
+    ],
+    "security": {
+      "org_posture": "auto",
+      "scope_posture": "strict",
+      "effective_posture": "strict",
+      "command_policy_denials": 0
+    },
+    "audit_refs": [
+      "run.execute/sbx-personal-u_alice@1757199010000"
+    ],
+    "durable_refs": [
+      {
+        "kind": "git_commit",
+        "ref": "github.com/acme/widgets@4f2c9d1e",
+        "sha256": null
+      },
+      {
+        "kind": "pull_request",
+        "ref": "github.com/acme/widgets/pull/128",
+        "sha256": null
+      }
+    ],
+    "credential_material_present": false,
+    "authority": "NONE"
+  }
+}

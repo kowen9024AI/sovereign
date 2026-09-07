@@ -1,0 +1,88 @@
+{
+  "schema_version": "sovereign.adapter.qm-harness-receipt.v0.1",
+  "receipt_id": "rcpt-0006",
+  "captured_at_ms": 1757200000000,
+  "task_class": "coding.repo-change",
+  "deployment": {
+    "deployment_ref": "acme-qm-prod",
+    "qm_version": "0.1.0+95b5a6a",
+    "org_scope_id": "org:acme"
+  },
+  "scope": {
+    "scope_id": "channel:C0ENG",
+    "kind": "channel",
+    "ref": "C0ENG",
+    "owner_principal_id": null
+  },
+  "principal": {
+    "principal_id": "u_alice",
+    "principal_type": "internal"
+  },
+  "harness": {
+    "profile_id": "pi",
+    "control_transport": "in-process",
+    "tool_transport": "in-process",
+    "transcript_format": null,
+    "model_ref": null
+  },
+  "sandbox": {
+    "sandbox_ref": "sbx-personal-u_alice",
+    "backend": "fly-machine",
+    "image_ref": "registry.example/acme/qm-sandbox:2026-09-01"
+  },
+  "session": {
+    "session_id": "sess-7f3a",
+    "surface": "slack"
+  },
+  "run": {
+    "run_id": "run-06",
+    "status": "done",
+    "attempts": 1,
+    "max_attempts": 3,
+    "dedup_key": null,
+    "worker_id": "worker-2",
+    "created_at_ms": 1757199000000,
+    "started_at_ms": 1757199001000,
+    "finished_at_ms": 1757199845000,
+    "stopped": false,
+    "paused_on_approval": false,
+    "pending_approval_count": 0,
+    "model_calls": 14,
+    "reap_outcome": null,
+    "tasks": [
+      {
+        "task_id": "task-1",
+        "status": "completed",
+        "origin_run_id": "run-01J9X"
+      }
+    ]
+  },
+  "tool_receipts": [
+    {
+      "attempt": 1,
+      "call_index": 0,
+      "tool": "execute",
+      "output_sha256": "62d6c2330036f64bcf71b95791743d6c77c38e0d7c8cbedcbc525c77c57cf0ee",
+      "effect_class": "DENIED",
+      "cached": false
+    }
+  ],
+  "security": {
+    "org_posture": "auto",
+    "scope_posture": null,
+    "effective_posture": "auto",
+    "command_policy_denials": 1
+  },
+  "audit_refs": [
+    "run.execute/sbx-personal-u_alice@1757199010000"
+  ],
+  "durable_refs": [
+    {
+      "kind": "message",
+      "ref": "slack://C0ENG/p1757199845000",
+      "sha256": null
+    }
+  ],
+  "credential_material_present": false,
+  "authority": "NONE"
+}

@@ -1,0 +1,25 @@
+{
+  "adapter_id": "sovereign.adapter.qm",
+  "adapter_version": "0.1.0",
+  "maturity": "STRUCTURALLY_VALIDATED",
+  "authority": "NONE",
+  "upstream": {
+    "project": "yc-software/qm",
+    "terminology_pin": "95b5a6a9941ce517f478147b1c6fa8365a16afa0",
+    "package_version": "0.1.0",
+    "pin_kind": "TERMINOLOGY_ONLY"
+  },
+  "evidence": {
+    "receipt_schema": "contracts/adapters/qm-harness-receipt.v0.1.schema.json",
+    "mapping": "adapters/qm/qm_adapter.py",
+    "valid_fixtures": 6,
+    "invalid_fixtures": 10,
+    "tests": "tests/test_qm_adapter.py"
+  },
+  "not_claimed": [
+    "LIVE_READ_VALIDATED",
+    "LIVE_EFFECT_VALIDATED",
+    "QUALIFIED"
+  ],
+  "work_order": "WO-SOVEREIGN-QM-ADAPTER-00A"
+}
