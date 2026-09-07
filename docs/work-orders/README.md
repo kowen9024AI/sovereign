@@ -1,0 +1,29 @@
+# Work Orders
+
+This directory may contain two different classes of work order:
+
+1. **Sovereign-native work orders** — canonical in this repository.
+2. **External work-order mirrors** — discoverability copies or manifests for work orders canonically owned elsewhere.
+
+## External mirror rule
+
+A coding agent must never derive an external work order from roadmap prose when a mirror file exists here.
+
+Every external mirror must state:
+
+```text
+canonical_repository
+canonical_path
+canonical_revision
+mirror_authority = NONE
+```
+
+If the local mirror and the named canonical file differ, the exact canonical file wins.
+
+A mirror may summarize the canonical body for local discoverability, but the coding agent must resolve and inspect the canonical file before execution.
+
+## Miskatonic work orders
+
+Miskatonic work orders executed against or using Sovereign are canonically owned by their named Miskatonic repository, normally `Miskatonic-System/miskatonic-control-plane` for execution/harness qualification.
+
+The local mirror exists specifically so a coding agent launched from this standalone repository can discover the task without access to prior chat history.
