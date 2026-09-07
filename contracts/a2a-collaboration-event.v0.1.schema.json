@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sovereign.local/contracts/a2a-collaboration-event.v0.1.schema.json",
+  "title": "Sovereign A2A Collaboration Event v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "mission_id",
+    "task_id",
+    "verb",
+    "actor_ref",
+    "target_role",
+    "status",
+    "input_refs",
+    "output_refs",
+    "budget",
+    "authority"
+  ],
+  "properties": {
+    "schema_version": {"const": "sovereign.a2a-collaboration-event.v0.1"},
+    "event_id": {"type": "string", "minLength": 1},
+    "mission_id": {"type": "string", "minLength": 1},
+    "task_id": {"type": "string", "minLength": 1},
+    "predecessor_event_id": {"type": ["string", "null"]},
+    "verb": {"enum": ["CLAIM", "PUBLISH", "OBSERVE", "COMPLETE", "REJECT", "RETRY", "CANCEL"]},
+    "actor_ref": {"type": "string", "minLength": 1},
+    "executor_ref": {"type": ["string", "null"]},
+    "session_ref": {"type": ["string", "null"]},
+    "target_role": {"type": ["string", "null"]},
+    "workspace_ref": {"type": ["string", "null"]},
+    "base_revision": {"type": ["string", "null"]},
+    "candidate_revision": {"type": ["string", "null"]},
+    "input_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/artifact_ref"}
+    },
+    "output_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/artifact_ref"}
+    },
+    "expected_output_schema": {"type": ["string", "null"]},
+    "status": {"enum": ["PENDING", "ACTIVE", "BLOCKED", "SUCCEEDED", "FAILED", "CANCELLED"]},
+    "blocker_code": {"type": ["string", "null"]},
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_turns", "max_wall_seconds", "max_repair_loops"],
+      "properties": {
+        "max_turns": {"type": "integer", "minimum": 0},
+        "max_wall_seconds": {"type": "integer", "minimum": 0},
+        "max_repair_loops": {"type": "integer", "minimum": 0},
+        "max_model_calls": {"type": ["integer", "null"], "minimum": 0},
+        "max_token_or_cost_units": {"type": ["number", "null"], "minimum": 0}
+      }
+    },
+    "observed_at": {"type": ["string", "null"], "format": "date-time"},
+    "authority": {"const": "NONE"}
+  },
+  "$defs": {
+    "artifact_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "ref"],
+      "properties": {
+        "kind": {"enum": ["REVISION", "FILE", "LOG", "TEST_RESULT", "REVIEW", "RECEIPT", "EXPERIENCE", "OTHER"]},
+        "ref": {"type": "string", "minLength": 1},
+        "sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}
+      }
+    }
+  }
+}
