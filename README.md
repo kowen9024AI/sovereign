@@ -39,6 +39,7 @@ human or external governance gate
 Sovereign is being designed to interoperate with, not absorb, the following replaceable substrates:
 
 - **QM / Quartermaster** — multiplayer agent harness and scoped execution substrate.
+- **OpenClaw** — shared human/agent workspace, sessions, channels, and execution substrate.
 - **GBrain** — mutable working/world knowledge substrate.
 - **Memorable** — procedural-memory substrate.
 - **River AI** — model-specialization/training substrate.
@@ -64,7 +65,7 @@ No one integration is required for the core contracts.
             \                    / \                    /
              \                  /   \                  /
               +------ agent execution / harness ------+
-                         (QM or adapter)
+                         (replaceable adapters)
                                   |
                                   v
                          accepted trajectory
@@ -86,14 +87,31 @@ ACCEPTED EVIDENCE   != TRAINING AUTHORITY
 MODEL IMPROVEMENT   != AUTHORITY EXPANSION
 ```
 
+## Sovereign Swarm Control Mesh
+
+Sovereign now defines a portable A2A coordination pattern, **SSCM**, for heterogeneous agents that collaborate through governed state and artifact references rather than full transcript exchange.
+
+```text
+agent executor
+    -> structured collaboration event
+    -> blackboard / artifact refs
+    -> next executor
+```
+
+SSCM is deliberately executor-neutral: Claude Code, Codex, Antigravity, local models, QM, OpenClaw, and future systems may attach without requiring a common model API or shared credential broker.
+
+See [`docs/SSCM.md`](docs/SSCM.md) and [`contracts/collaboration/a2a-collaboration-event.v0.1.schema.json`](contracts/collaboration/a2a-collaboration-event.v0.1.schema.json).
+
 ## Core contracts
 
-The first version freezes four portable JSON contracts under `contracts/`:
+The core promotion loop remains deliberately frozen at four portable JSON contracts:
 
 1. `experience.v0.1` — a bounded execution/experience candidate.
 2. `evaluation.v0.1` — independent evidence about that candidate.
 3. `promotion.v0.1` — an explicit proposal/decision boundary.
 4. `training-artifact.v0.1` — an accepted trajectory packaged for model specialization without implying permission to train.
+
+SSCM collaboration contracts live separately under `contracts/collaboration/`. This keeps execution coordination replaceable and prevents the collaboration substrate from silently becoming part of the promotion authority plane.
 
 ## Miskatonic Systems relationship
 
@@ -112,6 +130,7 @@ not copy-and-paste coupling.
 | Adapter | Maturity | Work order |
 |---|---|---|
 | [QM](adapters/qm/README.md) | `STRUCTURALLY_VALIDATED` | [WO-SOVEREIGN-QM-ADAPTER-00A](docs/work-orders/WO-SOVEREIGN-QM-ADAPTER-00A.md) |
+| OpenClaw | not started | |
 | GBrain | not started | |
 | Memorable | not started | |
 | River AI | not started | |
@@ -125,7 +144,7 @@ python3 -m pytest -q
 
 ## Status
 
-`BOOTSTRAP / CONTRACT DESIGN` + first adapter structurally validated
+`BOOTSTRAP / CONTRACT DESIGN` + QM adapter structurally validated + SSCM A2A contract bootstrapped
 
 No production authority is implemented. No external provider is trusted by default. No automatic promotion, canonical knowledge write, model training, or recursive permission expansion exists.
 
