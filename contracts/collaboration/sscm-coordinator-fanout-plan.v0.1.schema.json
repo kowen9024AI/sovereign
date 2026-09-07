@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sovereign.local/contracts/collaboration/sscm-coordinator-fanout-plan.v0.1.schema.json",
+  "title": "Sovereign SSCM Coordinator Fan-Out Plan v0.1",
+  "description": "Structured fan-out plan published by a COORDINATOR for a host-frozen two-task topology. The host validates the plan against the frozen topology before publishing anything.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "mission_id",
+    "role",
+    "objective",
+    "tasks",
+    "verification_requirements",
+    "authority"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "sovereign.sscm-coordinator-fanout-plan.v0.1"
+    },
+    "mission_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "role": {
+      "type": "string",
+      "const": "COORDINATOR"
+    },
+    "objective": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "task_id",
+          "target_role",
+          "objective",
+          "allowed_files",
+          "expected_content",
+          "commit_required",
+          "authority"
+        ],
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "target_role": {
+            "type": "string",
+            "enum": [
+              "WORKER_A",
+              "WORKER_B"
+            ]
+          },
+          "objective": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "allowed_files": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "expected_content": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "minProperties": 1
+          },
+          "commit_required": {
+            "type": "boolean",
+            "const": true
+          },
+          "authority": {
+            "type": "string",
+            "const": "NONE"
+          }
+        }
+      }
+    },
+    "verification_requirements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "notes": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "authority": {
+      "type": "string",
+      "const": "NONE"
+    }
+  }
+}

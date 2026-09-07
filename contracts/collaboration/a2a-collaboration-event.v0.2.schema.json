@@ -1,0 +1,224 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sovereign.local/contracts/collaboration/a2a-collaboration-event.v0.2.schema.json",
+  "title": "Sovereign A2A Collaboration Event v0.2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "mission_id",
+    "task_id",
+    "predecessor_event_ids",
+    "verb",
+    "actor_ref",
+    "target_role",
+    "status",
+    "input_refs",
+    "output_refs",
+    "budget",
+    "authority"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "sovereign.a2a-collaboration-event.v0.2",
+      "type": "string"
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mission_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "predecessor_event_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 4,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Causal predecessors. [] for a root event where permitted; one entry for a linear transition; 2-4 for a fan-in join. Order-independent."
+    },
+    "verb": {
+      "enum": [
+        "CLAIM",
+        "PUBLISH",
+        "OBSERVE",
+        "COMPLETE",
+        "REJECT",
+        "RETRY",
+        "CANCEL"
+      ],
+      "type": "string"
+    },
+    "actor_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "executor_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "session_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "target_role": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "workspace_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "base_revision": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "candidate_revision": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "input_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/artifact_ref"
+      }
+    },
+    "output_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/artifact_ref"
+      }
+    },
+    "expected_output_schema": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "enum": [
+        "PENDING",
+        "ACTIVE",
+        "BLOCKED",
+        "SUCCEEDED",
+        "FAILED",
+        "CANCELLED"
+      ],
+      "type": "string"
+    },
+    "blocker_code": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_turns",
+        "max_wall_seconds",
+        "max_repair_loops"
+      ],
+      "properties": {
+        "max_turns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_wall_seconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_repair_loops": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_model_calls": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "max_usage_units": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "usage unit = kilotokens = (all input tokens including cached input + all output tokens) / 1000. USD cost is evidence-only."
+        }
+      }
+    },
+    "observed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "authority": {
+      "const": "NONE"
+    }
+  },
+  "$defs": {
+    "artifact_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "ref"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "REVISION",
+            "FILE",
+            "LOG",
+            "TEST_RESULT",
+            "REVIEW",
+            "RECEIPT",
+            "EXPERIENCE",
+            "OTHER"
+          ],
+          "type": "string"
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    }
+  },
+  "description": "v0.2: multi-predecessor causal edges (predecessor_event_ids, unique, max 4) for fan-in joins, and the unambiguous usage budget name max_usage_units (kilotokens). v0.1 payloads are not rewritten."
+}

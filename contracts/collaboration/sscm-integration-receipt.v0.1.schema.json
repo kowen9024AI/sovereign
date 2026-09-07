@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sovereign.local/contracts/collaboration/sscm-integration-receipt.v0.1.schema.json",
+  "title": "Sovereign SSCM Integration Receipt v0.1",
+  "description": "Host-owned, digest-bound record of a deterministic Git fan-in. No model participates in integration.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "mission_id",
+    "base_sha",
+    "worker_candidates",
+    "integration_order",
+    "integration_method",
+    "integrated_sha",
+    "changed_files",
+    "verification",
+    "authority"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "sovereign.sscm-integration-receipt.v0.1"
+    },
+    "mission_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "base_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "worker_candidates": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "task_id",
+          "verified_sha",
+          "source_git_common_dir",
+          "imported_ref",
+          "imported_sha"
+        ],
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "verified_sha": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          },
+          "source_git_common_dir": {
+            "type": "string",
+            "minLength": 1
+          },
+          "imported_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "imported_sha": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          }
+        }
+      }
+    },
+    "integration_order": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "integration_method": {
+      "type": "string",
+      "const": "git cherry-pick, frozen task-id order"
+    },
+    "integrated_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "changed_files": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "descends_from_base",
+        "changed_files_exact",
+        "content_exact",
+        "worktree_clean"
+      ],
+      "properties": {
+        "descends_from_base": {
+          "type": "boolean",
+          "const": true
+        },
+        "changed_files_exact": {
+          "type": "boolean",
+          "const": true
+        },
+        "content_exact": {
+          "type": "boolean",
+          "const": true
+        },
+        "worktree_clean": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "authority": {
+      "type": "string",
+      "const": "NONE"
+    }
+  }
+}

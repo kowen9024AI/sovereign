@@ -49,6 +49,25 @@ def cmd_dogfood(args: argparse.Namespace) -> int:
     return 0 if report.get("disposition") == "SOVEREIGN_SSCM_LOCAL_A2A_QUALIFIED" else 1
 
 
+def cmd_dogfood_parallel(args: argparse.Namespace) -> int:
+    from .parallel import ParallelDogfoodSpec, ParallelMissionController
+    from .testing import mock_parallel_roster
+
+    canonical = Path(args.canonical or REPO_ROOT).resolve()
+    base = args.base or git(["rev-parse", "HEAD"], cwd=canonical)
+    spec = ParallelDogfoodSpec(canonical_checkout=canonical, base_sha=base, executor_timeout_seconds=args.timeout)
+    if args.executors == "live":
+        executors = {"COORDINATOR": ClaudeCodeExecutor(), "WORKER_A": CodexExecutor(), "WORKER_B": CodexExecutor(), "REVIEWER": ClaudeCodeExecutor()}
+    else:
+        executors = mock_parallel_roster(spec)
+    ctl = ParallelMissionController(spec, executors, mission_id=args.mission_id)
+    report = ctl.execute(cleanup=not args.keep)
+    summary = {k: report.get(k) for k in ("mission_id", "disposition", "mission_terminal_status", "blockers", "run_dir")}
+    summary["parallel_overlap_seconds"] = report.get("parallel", {}).get("timing", {}).get("parallel_overlap_seconds")
+    print(json.dumps(summary, indent=1))
+    return 0 if report.get("disposition") == "SOVEREIGN_SSCM_PARALLEL_FANOUT_FANIN_QUALIFIED" else 1
+
+
 def cmd_report(args: argparse.Namespace) -> int:
     p = REPO_ROOT / ".sovereign" / "runs" / args.mission_id / "report.json"
     print(p.read_text())
@@ -67,6 +86,11 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--mission-id")
     d.add_argument("--keep", action="store_true", help="retain dogfood worktrees/branch (default: destroy after evidence capture)")
     d.set_defaults(fn=cmd_dogfood)
+    dp = sub.add_parser("dogfood-parallel", help="SSCM-01B two-way fan-out / host fan-in")
+    for a, kw in (("--base", {}), ("--canonical", {}), ("--executors", {"choices": ["live", "mock"], "default": "live"}),
+                  ("--timeout", {"type": int, "default": 900}), ("--mission-id", {}), ("--keep", {"action": "store_true"})):
+        dp.add_argument(a, **kw)
+    dp.set_defaults(fn=cmd_dogfood_parallel)
     r = sub.add_parser("report")
     r.add_argument("mission_id")
     r.set_defaults(fn=cmd_report)

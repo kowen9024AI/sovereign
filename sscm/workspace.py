@@ -15,11 +15,12 @@ Model/executor claims about revisions are informational only.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 
 class WorkspaceError(ValueError):
@@ -62,13 +63,17 @@ def observe(path: Path, canonical_realpath: str) -> WorkspaceFacts:
     return WorkspaceFacts(real, common, head, branch, bool(status.strip()), real == canonical_realpath, untracked)
 
 
-class MissionWorkspaces:
-    """All Git state for one mission lives under ``root``; ``destroy()`` removes it."""
+class RepoLane:
+    """One independent bare mirror (object store + refs) plus its worktrees under ``root``.
 
-    def __init__(self, root: Path, canonical_checkout: Path) -> None:
+    Every lane is cloned from the canonical checkout at mission start and never shares a writable
+    common dir with any other lane: PARALLEL ACTORS != SHARED WRITABLE GIT STATE.
+    """
+
+    def __init__(self, root: Path, canonical_checkout: Path, mirror_name: str = "mirror.git") -> None:
         self.root = Path(root)
         self.canonical = Path(canonical_checkout).resolve()
-        self.mirror = self.root / "mirror.git"
+        self.mirror = self.root / mirror_name
 
     # -- mirror ---------------------------------------------------------------
 
@@ -150,6 +155,47 @@ class MissionWorkspaces:
             raise WorkspaceError("REVIEW_SHA_MISMATCH", f"reviewer HEAD {f.head_sha} != {verified_sha}")
         return {"reviewer_head": f.head_sha, "detached": f.branch == "HEAD", "dirty": f.dirty, "worktree": f.as_dict()}
 
+    # -- fan-in primitives (SSCM-01B) --------------------------------------------------------
+
+    def import_exact(self, source_common_dir: Path, sha: str, ref_name: str) -> str:
+        """Fetch exactly ``sha`` from another lane's object store into a bounded temporary ref and verify it.
+
+        Branch tips are never trusted: the fetched object must equal the expected full SHA.
+        """
+        if not re.fullmatch(r"[0-9a-f]{40}", sha):
+            raise WorkspaceError("REVISION_NOT_FULL_SHA", sha)
+        ref = f"refs/sscm/import/{ref_name}"
+        r = subprocess.run(["git", "fetch", "--quiet", "--no-tags", str(source_common_dir), f"{sha}:{ref}"],
+                           cwd=str(self.mirror), capture_output=True, text=True)
+        if r.returncode != 0:
+            raise WorkspaceError("IMPORT_FETCH_FAILED", f"{sha} from {source_common_dir}: {r.stderr.strip()}")
+        got = git(["rev-parse", "--verify", ref], cwd=self.mirror)
+        if got != sha:
+            raise WorkspaceError("IMPORT_SHA_MISMATCH", f"fetched {got}, expected {sha}")
+        return got
+
+    def integrate(self, worktree_name: str, base_sha: str, ordered_candidates: list[tuple[str, str]]) -> dict[str, Any]:
+        """Deterministic host fan-in: detached worktree at base, cherry-pick each verified SHA in the frozen order.
+
+        Any conflict aborts the cherry-pick and raises FANIN_CONFLICT; no model is consulted.
+        """
+        wt = self.add_detached_worktree(worktree_name, base_sha)
+        applied: list[dict[str, str]] = []
+        for task_id, sha in ordered_candidates:
+            if not re.fullmatch(r"[0-9a-f]{40}", sha):
+                raise WorkspaceError("REVISION_NOT_FULL_SHA", sha)
+            git(["cat-file", "-e", f"{sha}^{{commit}}"], cwd=wt)
+            r = subprocess.run(["git", "-c", "user.name=sscm-host-fanin", "-c", "user.email=sscm-host@sovereign.local",
+                                "cherry-pick", "--allow-empty-message", sha], cwd=str(wt), capture_output=True, text=True)
+            if r.returncode != 0:
+                subprocess.run(["git", "cherry-pick", "--abort"], cwd=str(wt), capture_output=True)
+                raise WorkspaceError("FANIN_CONFLICT", f"cherry-pick of {sha} ({task_id}) failed: {r.stderr.strip()[:400]}")
+            applied.append({"task_id": task_id, "source_sha": sha, "integrated_step_sha": git(["rev-parse", "HEAD"], cwd=wt)})
+        integrated = git(["rev-parse", "HEAD"], cwd=wt)
+        # bounded ref so another lane can import the integrated commit by exact SHA (detached HEADs are not advertised)
+        git(["update-ref", f"refs/sscm/integrated/{worktree_name}", integrated], cwd=self.mirror)
+        return {"worktree": str(wt.resolve()), "integrated_sha": integrated, "steps": applied, "ref": f"refs/sscm/integrated/{worktree_name}"}
+
     # -- cleanup ---------------------------------------------------------------------
 
     def destroy(self) -> dict[str, Any]:
@@ -159,6 +205,59 @@ class MissionWorkspaces:
                 if line.startswith("worktree ") and Path(line[9:]).resolve() != self.mirror.resolve():
                     git(["worktree", "remove", "--force", line[9:]], cwd=self.mirror, check=False)
                     removed.append(line[9:])
+            shutil.rmtree(self.mirror, ignore_errors=True)
+        return {"removed_worktrees": removed, "mirror_removed": not self.mirror.exists()}
+
+
+def assert_isolated(lanes: Mapping[str, WorkspaceFacts]) -> dict[str, Any]:
+    """Pairwise isolation for concurrent mutating actors, on resolved paths.
+
+    realpaths distinct; git common dirs distinct; no writable path containment; none canonical; none dirty.
+    """
+    items = sorted(lanes.items())
+    for name, f in items:
+        if f.is_canonical_checkout:
+            raise WorkspaceError("CANONICAL_CHECKOUT_WRITE", f"{name}: {f.realpath}")
+        if f.dirty:
+            raise WorkspaceError("WORKSPACE_DIRTY_AT_ADMISSION", f"{name}: {f.realpath}")
+    for i, (na, a) in enumerate(items):
+        for nb, b in items[i + 1:]:
+            ra, rb = Path(a.realpath).resolve(), Path(b.realpath).resolve()
+            if ra == rb:
+                raise WorkspaceError("WRITABLE_COLLISION", f"{na} and {nb} share realpath {ra}")
+            if str(ra).startswith(str(rb) + os.sep) or str(rb).startswith(str(ra) + os.sep):
+                raise WorkspaceError("WRITABLE_COLLISION", f"{na} and {nb} nest: {ra} / {rb}")
+            if Path(a.git_common_dir).resolve() == Path(b.git_common_dir).resolve():
+                raise WorkspaceError("SHARED_GIT_COMMON_DIR", f"{na} and {nb} share object store {a.git_common_dir}")
+    return {"lanes": {n: f.as_dict() for n, f in items}, "isolated": True}
+
+
+class MissionWorkspaces(RepoLane):
+    """All Git state for one mission under ``root``.
+
+    Behaves as the single default lane (``mirror.git``) for the serial 01A controller and manages additional
+    independent lanes (``<name>.git``) for parallel work. ``destroy()`` removes everything under ``root``.
+    """
+
+    def __init__(self, root: Path, canonical_checkout: Path) -> None:
+        super().__init__(root, canonical_checkout, "mirror.git")
+        self.lanes: dict[str, RepoLane] = {}
+
+    def lane(self, name: str) -> RepoLane:
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,40}", name):
+            raise WorkspaceError("LANE_NAME_INVALID", name)
+        if name not in self.lanes:
+            self.lanes[name] = RepoLane(self.root, self.canonical, f"{name}.git")
+        return self.lanes[name]
+
+    def destroy(self) -> dict[str, Any]:
+        removed: list[str] = []
+        for lane in [self, *self.lanes.values()]:
+            if lane.mirror.exists():
+                for line in git(["worktree", "list", "--porcelain"], cwd=lane.mirror, check=False).splitlines():
+                    if line.startswith("worktree ") and Path(line[9:]).resolve() != lane.mirror.resolve():
+                        git(["worktree", "remove", "--force", line[9:]], cwd=lane.mirror, check=False)
+                        removed.append(line[9:])
         if self.root.exists():
             shutil.rmtree(self.root)
         return {"removed_worktrees": removed, "root_removed": not self.root.exists(), "canonical_head": git(["rev-parse", "HEAD"], cwd=self.canonical)}
