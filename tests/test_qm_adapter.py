@@ -1,4 +1,4 @@
-"""WO-MSK-HARNESS-QM-01A: structural validation of the QM harness adapter."""
+"""WO-SOVEREIGN-QM-ADAPTER-00A: structural validation of the QM receipt adapter."""
 
 import copy
 import json
