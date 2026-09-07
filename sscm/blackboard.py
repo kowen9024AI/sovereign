@@ -28,11 +28,17 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from .contracts import (
+    EVENT_V2_SCHEMA_VERSION,
+    HOST_ACTOR_PREFIX,
+    MAX_PREDECESSORS_PER_EVENT,
+    REVISION_RE,
     STATUSES,
     VERBS,
     ContractViolation,
     canonical_json,
     digest,
+    event_predecessors,
+    event_usage_ceiling,
     now_iso,
     validate_event,
 )
@@ -68,6 +74,14 @@ class BudgetExceeded(BlackboardError):
     def __init__(self, dimension: str, limit: Any, observed: Any) -> None:
         super().__init__("BUDGET_EXCEEDED", f"{dimension}: limit {limit}, observed {observed}")
         self.dimension = dimension
+
+
+class JoinNotReady(BlackboardError):
+    """A multi-predecessor join whose lanes are not all present and SUCCEEDED."""
+
+
+class ReservationConflict(BlackboardError):
+    pass
 
 
 class MissionUnknown(BlackboardError):
@@ -119,21 +133,36 @@ class MissionBudget:
         d["required_observable_dimensions"] = list(self.required_observable_dimensions)
         return d
 
-    def event_budget(self) -> dict[str, Any]:
-        """Projection of the mission budget onto the per-event budget object (executor-usage ceilings)."""
-        return {
+    @property
+    def max_usage_units(self) -> float:
+        """v0.2 name for the kilotoken ceiling. Same value as the legacy ``max_token_or_cost_units``."""
+        return self.max_token_or_cost_units
+
+    def event_budget(self, schema_version: str = "sovereign.a2a-collaboration-event.v0.1") -> dict[str, Any]:
+        """Projection of the mission budget onto the per-event budget object (executor-usage ceilings).
+
+        v0.1 events carry the legacy name ``max_token_or_cost_units``; v0.2 events carry ``max_usage_units``.
+        """
+        eb = {
             "max_turns": self.max_turns,
             "max_wall_seconds": self.max_wall_seconds,
             "max_repair_loops": self.max_repair_loops,
             "max_model_calls": self.max_model_calls,
-            "max_token_or_cost_units": self.max_token_or_cost_units,
         }
+        if schema_version == EVENT_V2_SCHEMA_VERSION:
+            eb["max_usage_units"] = self.max_token_or_cost_units
+        else:
+            eb["max_token_or_cost_units"] = self.max_token_or_cost_units
+        return eb
 
     def limit(self, dimension: str) -> float | int:
         return getattr(self, self.USAGE_LIMITS[dimension])
 
     @classmethod
     def from_dict(cls, d: Mapping[str, Any]) -> "MissionBudget":
+        d = dict(d)
+        if "max_usage_units" in d and "max_token_or_cost_units" not in d:
+            d["max_token_or_cost_units"] = d.pop("max_usage_units")
         kw = {k: d[k] for k in cls.__dataclass_fields__ if k in d}  # type: ignore[attr-defined]
         if "required_observable_dimensions" in kw:
             kw["required_observable_dimensions"] = tuple(kw["required_observable_dimensions"])
@@ -150,7 +179,7 @@ ALLOWED_PREDECESSORS: dict[str, frozenset[str | None]] = {
     "CLAIM": frozenset({"PUBLISH", "OBSERVE", "RETRY"}),
     "COMPLETE": frozenset({"CLAIM", "OBSERVE", "COMPLETE"}),
     "OBSERVE": frozenset({"PUBLISH", "CLAIM", "COMPLETE", "OBSERVE"}),
-    "REJECT": frozenset({None, "PUBLISH", "CLAIM", "COMPLETE", "OBSERVE"}),
+    "REJECT": frozenset({None, "PUBLISH", "CLAIM", "COMPLETE", "OBSERVE", "REJECT"}),
     "RETRY": frozenset({"REJECT", "COMPLETE"}),
     "CANCEL": frozenset({None, "PUBLISH", "CLAIM", "COMPLETE", "OBSERVE", "REJECT", "RETRY"}),
 }
@@ -186,6 +215,26 @@ CREATE TABLE IF NOT EXISTS events (
   payload_json          TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS events_mission ON events(mission_id);
+CREATE TABLE IF NOT EXISTS event_predecessors (
+  event_id              TEXT NOT NULL REFERENCES events(event_id),
+  predecessor_event_id  TEXT NOT NULL REFERENCES events(event_id),
+  PRIMARY KEY (event_id, predecessor_event_id)
+);
+CREATE TABLE IF NOT EXISTS reservations (
+  reservation_id   TEXT PRIMARY KEY,
+  mission_id       TEXT NOT NULL REFERENCES missions(mission_id),
+  wave_id          TEXT NOT NULL,
+  run_id           TEXT NOT NULL UNIQUE,
+  role             TEXT NOT NULL,
+  executor_turns   INTEGER NOT NULL,
+  model_calls      INTEGER,
+  usage_units      REAL NOT NULL,
+  wall_seconds     REAL NOT NULL,
+  state            TEXT NOT NULL,
+  canonical_digest TEXT NOT NULL,
+  created_at       TEXT NOT NULL,
+  settled_at       TEXT
+);
 CREATE TABLE IF NOT EXISTS usage (
   mission_id       TEXT NOT NULL REFERENCES missions(mission_id),
   run_id           TEXT NOT NULL UNIQUE,
@@ -260,7 +309,7 @@ class MissionProjection:
 
 
 def causal_order(events: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    """Order events by predecessor depth, then event_id. Row order is never consulted."""
+    """Order events by DAG depth (max parent depth + 1), then event_id. Row order is never consulted."""
     by_id = {e["event_id"]: dict(e) for e in events}
     depth: dict[str, int] = {}
 
@@ -269,8 +318,8 @@ def causal_order(events: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
             return depth[eid]
         if eid in seen:
             raise BlackboardError("PREDECESSOR_CYCLE", eid)
-        pred = by_id[eid].get("predecessor_event_id")
-        val = 0 if not pred or pred not in by_id else d(pred, seen + (eid,)) + 1
+        parents = [p for p in event_predecessors(by_id[eid]) if p in by_id]
+        val = 0 if not parents else max(d(p, seen + (eid,)) for p in parents) + 1
         depth[eid] = val
         return val
 
@@ -437,25 +486,34 @@ class Blackboard:
                     return json.loads(existing["payload_json"])
                 raise EventIdConflict(payload["event_id"])
 
-            # predecessor
-            pred_id = payload.get("predecessor_event_id")
-            pred_verb: str | None = None
-            if pred_id is not None:
+            # predecessors (v0.1 normalized to [x]; v0.2 explicit list). Each must exist, share the mission,
+            # differ from the event, be unique, and satisfy the transition table for the receiving verb.
+            preds = event_predecessors(payload)
+            if len(preds) > MAX_PREDECESSORS_PER_EVENT:
+                raise PredecessorInvalid("PREDECESSOR_LIMIT", f"{len(preds)} > {MAX_PREDECESSORS_PER_EVENT}")
+            if len(set(preds)) != len(preds):
+                raise PredecessorInvalid("PREDECESSOR_DUPLICATE", ",".join(preds))
+            pred_rows: list[sqlite3.Row] = []
+            missing = [p for p in preds if p == payload["event_id"] or c.execute("SELECT 1 FROM events WHERE event_id=?", (p,)).fetchone() is None]
+            for pred_id in preds:
                 if pred_id == payload["event_id"]:
                     raise PredecessorInvalid("PREDECESSOR_SELF", pred_id)
-                pred = c.execute(
-                    "SELECT mission_id, verb, status FROM events WHERE event_id=?", (pred_id,)
-                ).fetchone()
-                if pred is None:
-                    raise PredecessorInvalid("PREDECESSOR_MISSING", pred_id)
+            if missing:
+                if len(preds) > 1:
+                    raise JoinNotReady("JOIN_INCOMPLETE", f"join lanes missing: {','.join(missing)}")
+                raise PredecessorInvalid("PREDECESSOR_MISSING", missing[0])
+            for pred_id in preds:
+                pred = c.execute("SELECT mission_id, verb, status, actor_ref, candidate_revision FROM events WHERE event_id=?", (pred_id,)).fetchone()
                 if pred["mission_id"] != payload["mission_id"]:
                     raise PredecessorInvalid("PREDECESSOR_CROSS_MISSION", pred_id)
-                pred_verb = pred["verb"]
-            if pred_verb not in ALLOWED_PREDECESSORS[payload["verb"]]:
-                raise PredecessorInvalid(
-                    "PREDECESSOR_TRANSITION_INVALID",
-                    f"{payload['verb']} cannot follow {pred_verb}",
-                )
+                if pred["verb"] not in ALLOWED_PREDECESSORS[payload["verb"]]:
+                    raise PredecessorInvalid("PREDECESSOR_TRANSITION_INVALID", f"{payload['verb']} cannot follow {pred['verb']}")
+                pred_rows.append(pred)
+            if not preds and None not in ALLOWED_PREDECESSORS[payload["verb"]]:
+                raise PredecessorInvalid("PREDECESSOR_TRANSITION_INVALID", f"{payload['verb']} requires a predecessor")
+            if len(preds) > 1:
+                self._admit_join(payload, preds, pred_rows)
+            pred_id = preds[0] if len(preds) == 1 else None  # legacy column keeps the single-parent case queryable
 
             # mission terminal? nothing but replay may follow a terminal mission event
             existing_events = [json.loads(r["payload_json"]) for r in c.execute(
@@ -504,11 +562,42 @@ class Blackboard:
                     payload.get("observed_at"), now_iso(), dig, canon,
                 ),
             )
+            for p in preds:
+                c.execute("INSERT INTO event_predecessors(event_id, predecessor_event_id) VALUES (?,?)", (payload["event_id"], p))
             c.execute("COMMIT")
         except BaseException:
             c.execute("ROLLBACK")
             raise
         return payload
+
+    @staticmethod
+    def _admit_join(payload: Mapping[str, Any], preds: list[str], pred_rows: list[sqlite3.Row]) -> None:
+        """Fan-in admission (SSCM-01B-R1 Part C): HOST VERIFICATION EARNS JOIN ELIGIBILITY.
+
+        Every parent of a multi-predecessor event must be a host-owned verified observation: verb OBSERVE,
+        actor under ``host:``, status SUCCEEDED, binding a full 40-hex candidate revision. The join itself must
+        reference exactly those frozen revisions as REVISION input refs. A SUCCEEDED worker COMPLETE is never
+        join-eligible.
+        """
+        frozen: list[str] = []
+        for pred_id, r in zip(preds, pred_rows):
+            if r["verb"] != "OBSERVE" or not str(r["actor_ref"]).startswith(HOST_ACTOR_PREFIX):
+                raise JoinNotReady("JOIN_PREDECESSOR_UNVERIFIED", f"{pred_id} is {r['verb']} by {r['actor_ref']}, not a host verification")
+            if r["status"] != "SUCCEEDED":
+                raise JoinNotReady("JOIN_BLOCKED", f"join lane not SUCCEEDED: {pred_id}")
+            rev = r["candidate_revision"]
+            if not rev or not REVISION_RE.match(str(rev)):
+                raise JoinNotReady("JOIN_PREDECESSOR_UNVERIFIED", f"{pred_id} carries no full verified candidate revision")
+            frozen.append(rev)
+        referenced = sorted(ref["ref"][4:] for ref in payload.get("input_refs", []) if ref.get("kind") == "REVISION" and str(ref.get("ref", "")).startswith("git:"))
+        if referenced != sorted(frozen):
+            raise JoinNotReady("JOIN_REVISION_MISMATCH", f"join references {referenced}, parents froze {sorted(frozen)}")
+
+    def predecessors_of(self, event_id: str) -> list[str]:
+        rows = self._conn().execute(
+            "SELECT predecessor_event_id FROM event_predecessors WHERE event_id=? ORDER BY predecessor_event_id", (event_id,)
+        ).fetchall()
+        return [r["predecessor_event_id"] for r in rows]
 
     @staticmethod
     def _enforce_budget(budget: MissionBudget, proj: MissionProjection, payload: Mapping[str, Any]) -> None:
@@ -532,8 +621,9 @@ class Blackboard:
                 raise BudgetExceeded(key, getattr(budget, key), eb[key])
         if eb.get("max_model_calls") is not None and eb["max_model_calls"] > budget.max_model_calls:
             raise BudgetExceeded("max_model_calls", budget.max_model_calls, eb["max_model_calls"])
-        if eb.get("max_token_or_cost_units") is not None and eb["max_token_or_cost_units"] > budget.max_token_or_cost_units:
-            raise BudgetExceeded("max_token_or_cost_units", budget.max_token_or_cost_units, eb["max_token_or_cost_units"])
+        ceiling = event_usage_ceiling(eb)
+        if ceiling is not None and ceiling > budget.max_token_or_cost_units:
+            raise BudgetExceeded("max_usage_units", budget.max_token_or_cost_units, ceiling)
 
 
     # -- executor usage ledger (Part B) ---------------------------------------------------------
@@ -621,6 +711,112 @@ class Blackboard:
         if proj["budget_exceeded"]:
             d = proj["budget_exceeded"][0]
             raise BudgetExceeded(budget.USAGE_LIMITS[d], budget.limit(d), "already exceeded")
+        active = self._active_reservations(self._conn(), mission_id)
         for dim, key in (("executor_turns", "observed_executor_turns"), ("model_calls", "observed_model_calls"), ("token_units", "observed_cost_or_token_units")):
-            if proj["budget_dimensions_observable"][dim] == "OBSERVED" and proj["observed_executor_runs"] and proj[key] >= budget.limit(dim):
-                raise BudgetExceeded(budget.USAGE_LIMITS[dim], budget.limit(dim), f"{proj[key]} consumed; no headroom for another run")
+            if proj["budget_dimensions_observable"][dim] == "OBSERVED" and proj["observed_executor_runs"] and proj[key] + active[dim] >= budget.limit(dim):
+                raise BudgetExceeded(budget.USAGE_LIMITS[dim], budget.limit(dim), f"{proj[key]} consumed + {active[dim]} reserved; no headroom for another run")
+
+
+    # -- pre-launch usage reservations (SSCM-01B Part: parallel budget) ---------------------------
+
+    def _active_reservations(self, c: sqlite3.Connection, mission_id: str) -> dict[str, float]:
+        row = c.execute(
+            "SELECT COALESCE(SUM(executor_turns),0) t, COALESCE(SUM(usage_units),0) u, COALESCE(SUM(wall_seconds),0) w, "
+            "COALESCE(SUM(model_calls),0) m FROM reservations WHERE mission_id=? AND state='RESERVED'", (mission_id,)
+        ).fetchone()
+        return {"executor_turns": row["t"], "token_units": row["u"], "wall_seconds": row["w"], "model_calls": row["m"]}
+
+    def reserve_wave(self, mission_id: str, wave_id: str, reservations: list[Mapping[str, Any]], *, elapsed_wall_seconds: float) -> dict[str, Any]:
+        """Atomically reserve per-run ceilings for a whole wave, or reserve nothing.
+
+        Each entry: {reservation_id, run_id, role, executor_turns, usage_units, wall_seconds, model_calls?}.
+        remaining = mission limit - observed usage - still-active reservations. If the wave's combined
+        reservation exceeds remaining on any dimension the entire wave is rejected before launch
+        (WAVE_ADMISSION_ATOMIC). Same reservation_id + same payload replays idempotently; different payload
+        is RESERVATION_CONFLICT.
+        """
+        budget = self.budget(mission_id)
+        c = self._conn()
+        c.execute("BEGIN IMMEDIATE")
+        try:
+            proj = self.usage_projection(mission_id)
+            active = self._active_reservations(c, mission_id)
+            observed = {"executor_turns": proj["observed_executor_turns"], "token_units": proj["observed_cost_or_token_units"],
+                        "wall_seconds": max(proj["observed_wall_seconds"], elapsed_wall_seconds), "model_calls": proj["observed_model_calls"]}
+            new_entries = []
+            for r in reservations:
+                payload = {"reservation_id": r["reservation_id"], "mission_id": mission_id, "wave_id": wave_id, "run_id": r["run_id"],
+                           "role": r["role"], "executor_turns": int(r["executor_turns"]), "usage_units": float(r["usage_units"]),
+                           "wall_seconds": float(r["wall_seconds"]), "model_calls": (None if r.get("model_calls") is None else int(r["model_calls"]))}
+                dig = digest(payload)
+                existing = c.execute("SELECT canonical_digest, state FROM reservations WHERE reservation_id=?", (payload["reservation_id"],)).fetchone()
+                if existing is not None:
+                    if existing["canonical_digest"] != dig:
+                        raise ReservationConflict("RESERVATION_CONFLICT", f"{payload['reservation_id']} exists with a different payload")
+                    continue  # idempotent replay; already counted in active if still RESERVED
+                if c.execute("SELECT 1 FROM reservations WHERE run_id=?", (payload["run_id"],)).fetchone():
+                    raise ReservationConflict("RESERVATION_CONFLICT", f"run {payload['run_id']} already has a reservation")
+                new_entries.append((payload, dig))
+            want = {"executor_turns": sum(p["executor_turns"] for p, _ in new_entries),
+                    "token_units": sum(p["usage_units"] for p, _ in new_entries),
+                    "wall_seconds": max([p["wall_seconds"] for p, _ in new_entries], default=0.0),  # a wave runs concurrently
+                    "model_calls": sum(p["model_calls"] or 0 for p, _ in new_entries)}
+            for dim in ("executor_turns", "token_units", "wall_seconds", "model_calls"):
+                if dim == "model_calls" and not any(p["model_calls"] is not None for p, _ in new_entries):
+                    continue
+                remaining = budget.limit(dim) - observed[dim] - active[dim]
+                if want[dim] > remaining + 1e-9:
+                    raise BudgetExceeded(budget.USAGE_LIMITS[dim], budget.limit(dim), f"wave {wave_id} wants {want[dim]} but remaining {round(remaining, 3)} (WAVE_ADMISSION_ATOMIC)")
+            for payload, dig in new_entries:
+                c.execute(
+                    """INSERT INTO reservations(reservation_id, mission_id, wave_id, run_id, role, executor_turns, model_calls, usage_units,
+                       wall_seconds, state, canonical_digest, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (payload["reservation_id"], mission_id, wave_id, payload["run_id"], payload["role"], payload["executor_turns"],
+                     payload["model_calls"], payload["usage_units"], payload["wall_seconds"], "RESERVED", dig, now_iso()))
+            c.execute("COMMIT")
+        except BaseException:
+            c.execute("ROLLBACK")
+            raise
+        return self.reservations(mission_id)
+
+    def reservations(self, mission_id: str) -> dict[str, Any]:
+        rows = self._conn().execute("SELECT * FROM reservations WHERE mission_id=? ORDER BY reservation_id", (mission_id,)).fetchall()
+        return {"reservations": [dict(r) for r in rows],
+                "active": self._active_reservations(self._conn(), mission_id),
+                "states": {r["reservation_id"]: r["state"] for r in rows}}
+
+    def settle(self, mission_id: str, *, run_id: str, role: str, executor_ref: str, usage: Mapping[str, Any],
+               observability: Mapping[str, str]) -> dict[str, Any]:
+        """Settle a reservation against observed usage: charge the ledger, release the unused remainder.
+
+        Observed usage is recorded durably first (it is evidence). Then, if any observed dimension exceeds the
+        run's reserved ceiling, RUN_RESERVATION_EXCEEDED is raised; the reservation row is marked SETTLED either
+        way and never rewritten to hide overshoot.
+        """
+        c = self._conn()
+        res = c.execute("SELECT * FROM reservations WHERE run_id=? AND mission_id=?", (run_id, mission_id)).fetchone()
+        if res is None:
+            raise ReservationConflict("RESERVATION_MISSING", f"no reservation for run {run_id}")
+        charge_error: BlackboardError | None = None
+        try:
+            proj = self.record_usage(mission_id, run_id=run_id, role=role, executor_ref=executor_ref, usage=usage, observability=observability)
+        except BudgetExceeded as ex:
+            charge_error = ex
+            proj = self.usage_projection(mission_id)
+        c.execute("UPDATE reservations SET state='SETTLED', settled_at=? WHERE run_id=? AND state='RESERVED'", (now_iso(), run_id))
+        over = []
+        for dim, col in (("executor_turns", "executor_turns"), ("token_units", "usage_units"), ("wall_seconds", "wall_seconds"), ("model_calls", "model_calls")):
+            observed_v = usage.get(dim)
+            limit_v = res[col]
+            if observed_v is not None and limit_v is not None and observed_v > limit_v + 1e-9:
+                over.append(f"{dim} observed {observed_v} > reserved {limit_v}")
+        if over:
+            raise BlackboardError("RUN_RESERVATION_EXCEEDED", "; ".join(over))
+        if charge_error is not None:
+            raise charge_error
+        return proj
+
+    def release(self, mission_id: str, run_id: str) -> None:
+        """Release an unsettled reservation for a run that never launched (wave aborted)."""
+        self._conn().execute("UPDATE reservations SET state='RELEASED', settled_at=? WHERE run_id=? AND mission_id=? AND state='RESERVED'",
+                             (now_iso(), run_id, mission_id))

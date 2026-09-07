@@ -1,0 +1,538 @@
+[
+  {
+    "actor_ref": "actor:coordinator",
+    "authority": "NONE",
+    "base_revision": "97d33978e2b416334194b27bba1ae03f514b661a",
+    "blocker_code": null,
+    "budget": {
+      "max_model_calls": 48,
+      "max_repair_loops": 0,
+      "max_turns": 48,
+      "max_usage_units": 800.0,
+      "max_wall_seconds": 1800
+    },
+    "candidate_revision": null,
+    "event_id": "evt-821f30d1-eb0b-4acb-b71f-9458ff4874a3",
+    "executor_ref": "executor:claude-code",
+    "expected_output_schema": "sovereign.sscm-implementer-result.v0.1",
+    "input_refs": [],
+    "mission_id": "mission-sscm-01b-live-2",
+    "observed_at": "2026-09-07T05:05:23.500Z",
+    "output_refs": [
+      {
+        "kind": "FILE",
+        "ref": "run:mission-sscm-01b-live-2:artifacts/coordinator-fanout-plan.json",
+        "sha256": "62c914f1ebd25e21fd065dc2398be4da37e20bb2867499cc6617ae185b85f897"
+      },
+      {
+        "kind": "RECEIPT",
+        "ref": "run:mission-sscm-01b-live-2:artifacts/coordinator-run.json",
+        "sha256": "84cc05a3f7668a7fcb985a5b755253aa11f716a900ba3ca127592e5026326de6"
+      }
+    ],
+    "predecessor_event_ids": [],
+    "schema_version": "sovereign.a2a-collaboration-event.v0.2",
+    "session_ref": "20e294f7-9778-4cf3-9ad9-50087b427b82",
+    "status": "SUCCEEDED",
+    "target_role": "WORKER_A+WORKER_B",
+    "task_id": "task:fanout-plan",
+    "verb": "PUBLISH",
+    "workspace_ref": null
+  },
+  {
+    "actor_ref": "actor:worker_b",
+    "authority": "NONE",
+    "base_revision": "97d33978e2b416334194b27bba1ae03f514b661a",
+    "blocker_code": null,
+    "budget": {
+      "max_model_calls": 48,
+      "max_repair_loops": 0,
+      "max_turns": 48,
+      "max_usage_units": 800.0,
+      "max_wall_seconds": 1800
+    },
+    "candidate_revision": null,
+    "event_id": "evt-be458498-9ff5-4807-aa93-2afd243ca754",
+    "executor_ref": "executor:codex",
+    "expected_output_schema": null,
+    "input_refs": [
+      {
+        "kind": "FILE",
+        "ref": "run:mission-sscm-01b-live-2:artifacts/coordinator-fanout-plan.json",
+        "sha256": "62c914f1ebd25e21fd065dc2398be4da37e20bb2867499cc6617ae185b85f897"
+      }
+    ],
+    "mission_id": "mission-sscm-01b-live-2",
+    "observed_at": "2026-09-07T05:05:24.003Z",
+    "output_refs": [],
+    "predecessor_event_ids": [
+      "evt-821f30d1-eb0b-4acb-b71f-9458ff4874a3"
+    ],
+    "schema_version": "sovereign.a2a-collaboration-event.v0.2",
+    "session_ref": null,
+    "status": "ACTIVE",
+    "target_role": "WORKER_B",
+    "task_id": "task:fanout-b",
+    "verb": "CLAIM",
+    "workspace_ref": "/home/kowen9024/sovereign/.sovereign/runs/mission-sscm-01b-live-2/workspaces/worker-b-wt"
+  },
+  {
+    "actor_ref": "actor:worker_a",
+    "authority": "NONE",
+    "base_revision": "97d33978e2b416334194b27bba1ae03f514b661a",
+    "blocker_code": null,
+    "budget": {
+      "max_model_calls": 48,
+      "max_repair_loops": 0,
+      "max_turns": 48,
+      "max_usage_units": 800.0,
+      "max_wall_seconds": 1800
+    },
+    "candidate_revision": null,
+    "event_id": "evt-ee87b5d4-8d74-4784-9c2c-3e87d3b4d63f",
+    "executor_ref": "executor:codex",
+    "expected_output_schema": null,
+    "input_refs": [
+      {
+        "kind": "FILE",
+        "ref": "run:mission-sscm-01b-live-2:artifacts/coordinator-fanout-plan.json",
+        "sha256": "62c914f1ebd25e21fd065dc2398be4da37e20bb2867499cc6617ae185b85f897"
+      }
+    ],
+    "mission_id": "mission-sscm-01b-live-2",
+    "observed_at": "2026-09-07T05:05:23.845Z",
+    "output_refs": [],
+    "predecessor_event_ids": [
+      "evt-821f30d1-eb0b-4acb-b71f-9458ff4874a3"
+    ],
+    "schema_version": "sovereign.a2a-collaboration-event.v0.2",
+    "session_ref": null,
+    "status": "ACTIVE",
+    "target_role": "WORKER_A",
+    "task_id": "task:fanout-a",
+    "verb": "CLAIM",
+    "workspace_ref": "/home/kowen9024/sovereign/.sovereign/runs/mission-sscm-01b-live-2/workspaces/worker-a-wt"
+  },
+  {
+    "actor_ref": "actor:worker_b",
+    "authority": "NONE",
+    "base_revision": "97d33978e2b416334194b27bba1ae03f514b661a",
+    "blocker_code": null,
+    "budget": {
+      "max_model_calls": 48,
+      "max_repair_loops": 0,
+      "max_turns": 48,
+      "max_usage_units": 800.0,
+      "max_wall_seconds": 1800
+    },
+    "candidate_revision": "6a8c1a21f45c8e1a827fe64adc88ee051597c4aa",
+    "event_id": "evt-faf522d0-3ca8-4656-8677-a615602dc7a2",
+    "executor_ref": "executor:codex",
+    "expected_output_schema": null,
+    "input_refs": [],
+    "mission_id": "mission-sscm-01b-live-2",
+    "observed_at": "2026-09-07T05:06:02.703Z",
+    "output_refs": [
+      {
+        "kind": "FILE",
+        "ref": "run:mission-sscm-01b-live-2:artifacts/worker_b-result.json",
+        "sha256": "edf5caa41b732e30b8e460976f1be27dca3daa3a1889eff11ae700f3d504adc9"
+      },
+      {
+        "kind": "RECEIPT",
+        "ref": "run:mission-sscm-01b-live-2:artifacts/worker_b-run.json",
+        "sha256": "5cd985bf25d51dc171738955a7c8c10172e5d6da3339d9cb9165f3d2d6293488"
+      }
+    ],
+    "predecessor_event_ids": [
+      "evt-be458498-9ff5-4807-aa93-2afd243ca754"
+    ],
+    "schema_version": "sovereign.a2a-collaboration-event.v0.2",
+    "session_ref": "codex-thread:01a07a41-c143-7f43-b658-49cb17a71085",
+    "status": "SUCCEEDED",
+    "target_role": null,
+    "task_id": "task:fanout-b",
+    "verb": "COMPLETE",
+    "workspace_ref": "/home/kowen9024/sovereign/.sovereign/runs/mission-sscm-01b-live-2/workspaces/worker-b-wt"
+  },
+  {
+    "actor_ref": "actor:worker_a",
+    "authority": "NONE",
+    "base_revision": "97d33978e2b416334194b27bba1ae03f514b661a",
+    "blocker_code": null,
+    "budget": {
+      "max_model_calls": 48,
+      "max_repair_loops": 0,
+      "max_turns": 48,
+      "max_usage_units": 800.0,
+      "max_wall_seconds": 1800
+    },
+    "candidate_revision": "7531f8031097dcec47100da161809eede33d763c",
+    "event_id": "evt-ff93e230-978e-43d7-a445-f8a92c610521",
+    "executor_ref": "executor:codex",
+    "expected_output_schema": null,
+    "input_refs": [],
+    "mission_id": "mission-sscm-01b-live-2",
+    "observed_at": "2026-09-07T05:06:02.515Z",
+    "output_refs": [
+      {
+        "kind": "FILE",
+        "ref": "run:mission-sscm-01b-live-2:artifacts/worker_a-result.json",
+        "sha256": "bd4ba98346eb37ca48073612c176d150aa17c822a0066e877f591c805d028c7d"
+      },
+      {
+        "kind": "RECEIPT",
+        "ref": "run:mission-sscm-01b-live-2:artifacts/worker_a-run.json",
+        "sha256": "e6a8386522dcebcb92a552c7486c68deb0f9d90ace75b08683c2b47d4989b991"
+      }
+    ],
+    "predecessor_event_ids": [
+      "evt-ee87b5d4-8d74-4784-9c2c-3e87d3b4d63f"
+    ],
+    "schema_version": "sovereign.a2a-collaboration-event.v0.2",
+    "session_ref": "codex-thread:01a07a41-c199-71f3-9225-e49f4589aa6b",
+    "status": "SUCCEEDED",
+    "target_role": null,
+    "task_id": "task:fanout-a",
+    "verb": "COMPLETE",
+    "workspace_ref": "/home/kowen9024/sovereign/.sovereign/runs/mission-sscm-01b-live-2/workspaces/worker-a-wt"
+  },
+  {
+    "actor_ref": "host:sscm-mission-controller",
+    "authority": "NONE",
+    "base_revision": "97d33978e2b416334194b27bba1ae03f514b661a",
+    "blocker_code": null,
+    "budget": {
+      "max_model_calls": 48,
+      "max_repair_loops": 0,
+      "max_turns": 48,
+      "max_usage_units": 800.0,
+      "max_wall_seconds": 1800
+    },
+    "candidate_revision": "6a8c1a21f45c8e1a827fe64adc88ee051597c4aa",
+    "event_id": "evt-2470049c-ca07-4f35-ae06-a3894a19ef35",
+    "executor_ref": null,
+    "expected_output_schema": null,
+    "input_refs": [],
+    "mission_id": "mission-sscm-01b-live-2",
+    "observed_at": "2026-09-07T05:06:02.723Z",
+    "output_refs": [
+      {
+        "kind": "FILE",
+        "ref": "run:mission-sscm-01b-live-2:artifacts/host-verification-worker_b.json",
+        "sha256": "b9a03e42aa8436220b811dca07f1a069b63ee62a19fb6aa76fb763b7f9447d78"
+      },
+      {
+        "kind": "REVISION",
+        "ref": "git:6a8c1a21f45c8e1a827fe64adc88ee051597c4aa",
+        "sha256": null
+      }
+    ],
+    "predecessor_event_ids": [
+      "evt-faf522d0-3ca8-4656-8677-a615602dc7a2"
+    ],
+    "schema_version": "sovereign.a2a-collaboration-event.v0.2",
+    "session_ref": null,
+    "status": "SUCCEEDED",
+    "target_role": null,
+    "task_id": "task:fanout-b",
+    "verb": "OBSERVE",
+    "workspace_ref": "/home/kowen9024/sovereign/.sovereign/runs/mission-sscm-01b-live-2/workspaces/worker-b-wt"
+  },
+  {
+    "actor_ref": "host:sscm-mission-controller",
+    "authority": "NONE",
+    "base_revision": "97d33978e2b416334194b27bba1ae03f514b661a",
+    "blocker_code": null,
+    "budget": {
+      "max_model_calls": 48,
+      "max_repair_loops": 0,
+      "max_turns": 48,
+      "max_usage_units": 800.0,
+      "max_wall_seconds": 1800
+    },
+    "candidate_revision": "7531f8031097dcec47100da161809eede33d763c",
+    "event_id": "evt-3b84d81e-9b0b-4162-9cf7-6d16364533ca",
+    "executor_ref": null,
+    "expected_output_schema": null,
+    "input_refs": [],
+    "mission_id": "mission-sscm-01b-live-2",
+    "observed_at": "2026-09-07T05:06:02.534Z",
+    "output_refs": [
+      {
+        "kind": "FILE",
+        "ref": "run:mission-sscm-01b-live-2:artifacts/host-verification-worker_a.json",
+        "sha256": "068d31218d0fdb014c1199cab707dc9b8b5b11912332e26c6a1163c1f5fcd7a8"
+      },
+      {
+        "kind": "REVISION",
+        "ref": "git:7531f8031097dcec47100da161809eede33d763c",
+        "sha256": null
+      }
+    ],
+    "predecessor_event_ids": [
+      "evt-ff93e230-978e-43d7-a445-f8a92c610521"
+    ],
+    "schema_version": "sovereign.a2a-collaboration-event.v0.2",
+    "session_ref": null,
+    "status": "SUCCEEDED",
+    "target_role": null,
+    "task_id": "task:fanout-a",
+    "verb": "OBSERVE",
+    "workspace_ref": "/home/kowen9024/sovereign/.sovereign/runs/mission-sscm-01b-live-2/workspaces/worker-a-wt"
+  },
+  {
+    "actor_ref": "host:sscm-mission-controller",
+    "authority": "NONE",
+    "base_revision": "97d33978e2b416334194b27bba1ae03f514b661a",
+    "blocker_code": null,
+    "budget": {
+      "max_model_calls": 48,
+      "max_repair_loops": 0,
+      "max_turns": 48,
+      "max_usage_units": 800.0,
+      "max_wall_seconds": 1800
+    },
+    "candidate_revision": null,
+    "event_id": "evt-ce73dbf6-df47-4e71-ae71-cb7fa30958cb",
+    "executor_ref": null,
+    "expected_output_schema": null,
+    "input_refs": [
+      {
+        "kind": "REVISION",
+        "ref": "git:7531f8031097dcec47100da161809eede33d763c",
+        "sha256": null
+      },
+      {
+        "kind": "REVISION",
+        "ref": "git:6a8c1a21f45c8e1a827fe64adc88ee051597c4aa",
+        "sha256": null
+      }
+    ],
+    "mission_id": "mission-sscm-01b-live-2",
+    "observed_at": "2026-09-07T05:06:02.728Z",
+    "output_refs": [],
+    "predecessor_event_ids": [
+      "evt-3b84d81e-9b0b-4162-9cf7-6d16364533ca",
+      "evt-2470049c-ca07-4f35-ae06-a3894a19ef35"
+    ],
+    "schema_version": "sovereign.a2a-collaboration-event.v0.2",
+    "session_ref": null,
+    "status": "SUCCEEDED",
+    "target_role": null,
+    "task_id": "task:fanin",
+    "verb": "OBSERVE",
+    "workspace_ref": null
+  },
+  {
+    "actor_ref": "host:sscm-mission-controller",
+    "authority": "NONE",
+    "base_revision": "97d33978e2b416334194b27bba1ae03f514b661a",
+    "blocker_code": null,
+    "budget": {
+      "max_model_calls": 48,
+      "max_repair_loops": 0,
+      "max_turns": 48,
+      "max_usage_units": 800.0,
+      "max_wall_seconds": 1800
+    },
+    "candidate_revision": "916826117fcd3cdf729966ebf7db5c063ed65583",
+    "event_id": "evt-4c6ecdc3-d35f-4ce1-a5a2-030b36d6a8fb",
+    "executor_ref": null,
+    "expected_output_schema": null,
+    "input_refs": [],
+    "mission_id": "mission-sscm-01b-live-2",
+    "observed_at": "2026-09-07T05:06:02.897Z",
+    "output_refs": [
+      {
+        "kind": "RECEIPT",
+        "ref": "run:mission-sscm-01b-live-2:artifacts/integration-receipt.json",
+        "sha256": "ee436bc048ef266b97c076a3619a9db717b416ecf65b0c823e3272921c567ee0"
+      },
+      {
+        "kind": "REVISION",
+        "ref": "git:916826117fcd3cdf729966ebf7db5c063ed65583",
+        "sha256": null
+      }
+    ],
+    "predecessor_event_ids": [
+      "evt-ce73dbf6-df47-4e71-ae71-cb7fa30958cb"
+    ],
+    "schema_version": "sovereign.a2a-collaboration-event.v0.2",
+    "session_ref": null,
+    "status": "SUCCEEDED",
+    "target_role": null,
+    "task_id": "task:fanin",
+    "verb": "OBSERVE",
+    "workspace_ref": "/home/kowen9024/sovereign/.sovereign/runs/mission-sscm-01b-live-2/workspaces/integration-wt"
+  },
+  {
+    "actor_ref": "actor:reviewer",
+    "authority": "NONE",
+    "base_revision": "97d33978e2b416334194b27bba1ae03f514b661a",
+    "blocker_code": null,
+    "budget": {
+      "max_model_calls": 48,
+      "max_repair_loops": 0,
+      "max_turns": 48,
+      "max_usage_units": 800.0,
+      "max_wall_seconds": 1800
+    },
+    "candidate_revision": "916826117fcd3cdf729966ebf7db5c063ed65583",
+    "event_id": "evt-3d47f2bb-ac74-486d-bd0f-872acd55eb00",
+    "executor_ref": "executor:claude-code",
+    "expected_output_schema": null,
+    "input_refs": [
+      {
+        "kind": "RECEIPT",
+        "ref": "run:mission-sscm-01b-live-2:artifacts/integration-receipt.json",
+        "sha256": "ee436bc048ef266b97c076a3619a9db717b416ecf65b0c823e3272921c567ee0"
+      },
+      {
+        "kind": "REVISION",
+        "ref": "git:916826117fcd3cdf729966ebf7db5c063ed65583",
+        "sha256": null
+      }
+    ],
+    "mission_id": "mission-sscm-01b-live-2",
+    "observed_at": "2026-09-07T05:06:03.418Z",
+    "output_refs": [],
+    "predecessor_event_ids": [
+      "evt-4c6ecdc3-d35f-4ce1-a5a2-030b36d6a8fb"
+    ],
+    "schema_version": "sovereign.a2a-collaboration-event.v0.2",
+    "session_ref": null,
+    "status": "ACTIVE",
+    "target_role": "REVIEWER",
+    "task_id": "task:review",
+    "verb": "CLAIM",
+    "workspace_ref": "/home/kowen9024/sovereign/.sovereign/runs/mission-sscm-01b-live-2/workspaces/reviewer-wt"
+  },
+  {
+    "actor_ref": "actor:reviewer",
+    "authority": "NONE",
+    "base_revision": "97d33978e2b416334194b27bba1ae03f514b661a",
+    "blocker_code": null,
+    "budget": {
+      "max_model_calls": 48,
+      "max_repair_loops": 0,
+      "max_turns": 48,
+      "max_usage_units": 800.0,
+      "max_wall_seconds": 1800
+    },
+    "candidate_revision": "916826117fcd3cdf729966ebf7db5c063ed65583",
+    "event_id": "evt-484bde15-8206-4bf5-b51b-977b8ac315d6",
+    "executor_ref": "executor:claude-code",
+    "expected_output_schema": null,
+    "input_refs": [
+      {
+        "kind": "RECEIPT",
+        "ref": "run:mission-sscm-01b-live-2:artifacts/integration-receipt.json",
+        "sha256": "ee436bc048ef266b97c076a3619a9db717b416ecf65b0c823e3272921c567ee0"
+      },
+      {
+        "kind": "REVISION",
+        "ref": "git:916826117fcd3cdf729966ebf7db5c063ed65583",
+        "sha256": null
+      }
+    ],
+    "mission_id": "mission-sscm-01b-live-2",
+    "observed_at": "2026-09-07T05:07:11.131Z",
+    "output_refs": [
+      {
+        "kind": "REVIEW",
+        "ref": "run:mission-sscm-01b-live-2:artifacts/reviewer-result.json",
+        "sha256": "70135aeeb2bb06c5606acfaff9c3910f41fc2ed7af43250ab69421a9e1d88679"
+      },
+      {
+        "kind": "RECEIPT",
+        "ref": "run:mission-sscm-01b-live-2:artifacts/reviewer-run.json",
+        "sha256": "c876c572c9bd99f906824e46067683a36be450414c5cbbf5d7efbe7e18ee516f"
+      }
+    ],
+    "predecessor_event_ids": [
+      "evt-3d47f2bb-ac74-486d-bd0f-872acd55eb00"
+    ],
+    "schema_version": "sovereign.a2a-collaboration-event.v0.2",
+    "session_ref": "fb335f31-9cf1-4639-b3d1-62acc47ddaed",
+    "status": "SUCCEEDED",
+    "target_role": null,
+    "task_id": "task:review",
+    "verb": "COMPLETE",
+    "workspace_ref": "/home/kowen9024/sovereign/.sovereign/runs/mission-sscm-01b-live-2/workspaces/reviewer-wt"
+  },
+  {
+    "actor_ref": "host:sscm-mission-controller",
+    "authority": "NONE",
+    "base_revision": "97d33978e2b416334194b27bba1ae03f514b661a",
+    "blocker_code": null,
+    "budget": {
+      "max_model_calls": 48,
+      "max_repair_loops": 0,
+      "max_turns": 48,
+      "max_usage_units": 800.0,
+      "max_wall_seconds": 1800
+    },
+    "candidate_revision": "916826117fcd3cdf729966ebf7db5c063ed65583",
+    "event_id": "evt-108921d2-bf2c-47fc-9ba5-1463657c29ee",
+    "executor_ref": null,
+    "expected_output_schema": null,
+    "input_refs": [],
+    "mission_id": "mission-sscm-01b-live-2",
+    "observed_at": "2026-09-07T05:07:11.144Z",
+    "output_refs": [
+      {
+        "kind": "FILE",
+        "ref": "run:mission-sscm-01b-live-2:artifacts/host-review-verification.json",
+        "sha256": "a2ffce942fd1dd8c9dfeecba6b3ac6fe79488f4b554522e800b6d797c731c81c"
+      }
+    ],
+    "predecessor_event_ids": [
+      "evt-484bde15-8206-4bf5-b51b-977b8ac315d6"
+    ],
+    "schema_version": "sovereign.a2a-collaboration-event.v0.2",
+    "session_ref": null,
+    "status": "SUCCEEDED",
+    "target_role": null,
+    "task_id": "task:review",
+    "verb": "OBSERVE",
+    "workspace_ref": "/home/kowen9024/sovereign/.sovereign/runs/mission-sscm-01b-live-2/workspaces/reviewer-wt"
+  },
+  {
+    "actor_ref": "host:sscm-mission-controller",
+    "authority": "NONE",
+    "base_revision": "97d33978e2b416334194b27bba1ae03f514b661a",
+    "blocker_code": null,
+    "budget": {
+      "max_model_calls": 48,
+      "max_repair_loops": 0,
+      "max_turns": 48,
+      "max_usage_units": 800.0,
+      "max_wall_seconds": 1800
+    },
+    "candidate_revision": "916826117fcd3cdf729966ebf7db5c063ed65583",
+    "event_id": "evt-588a61ab-1404-40d5-b35d-976d4af6601b",
+    "executor_ref": null,
+    "expected_output_schema": null,
+    "input_refs": [
+      {
+        "kind": "FILE",
+        "ref": "run:mission-sscm-01b-live-2:artifacts/host-review-verification.json",
+        "sha256": "a2ffce942fd1dd8c9dfeecba6b3ac6fe79488f4b554522e800b6d797c731c81c"
+      }
+    ],
+    "mission_id": "mission-sscm-01b-live-2",
+    "observed_at": "2026-09-07T05:07:11.233Z",
+    "output_refs": [],
+    "predecessor_event_ids": [
+      "evt-108921d2-bf2c-47fc-9ba5-1463657c29ee"
+    ],
+    "schema_version": "sovereign.a2a-collaboration-event.v0.2",
+    "session_ref": null,
+    "status": "SUCCEEDED",
+    "target_role": null,
+    "task_id": "mission-sscm-01b-live-2",
+    "verb": "COMPLETE",
+    "workspace_ref": null
+  }
+]

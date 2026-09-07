@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import uuid
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -16,9 +17,15 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 CONTRACTS = REPO_ROOT / "contracts"
 
 EVENT_SCHEMA_PATH = CONTRACTS / "collaboration" / "a2a-collaboration-event.v0.1.schema.json"
+EVENT_V2_SCHEMA_PATH = CONTRACTS / "collaboration" / "a2a-collaboration-event.v0.2.schema.json"
 EXPERIENCE_SCHEMA_PATH = CONTRACTS / "experience.v0.1.schema.json"
 
 EVENT_SCHEMA_VERSION = "sovereign.a2a-collaboration-event.v0.1"
+EVENT_V2_SCHEMA_VERSION = "sovereign.a2a-collaboration-event.v0.2"
+EVENT_SCHEMAS = {EVENT_SCHEMA_VERSION: EVENT_SCHEMA_PATH, EVENT_V2_SCHEMA_VERSION: EVENT_V2_SCHEMA_PATH}
+MAX_PREDECESSORS_PER_EVENT = 4
+HOST_ACTOR_PREFIX = "host:"  # actors that may freeze a verified candidate (mission controller / host git), never a model
+REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
 EXPERIENCE_SCHEMA_VERSION = "sovereign.experience.v0.1"
 
 VERBS = ("CLAIM", "PUBLISH", "OBSERVE", "COMPLETE", "REJECT", "RETRY", "CANCEL")
@@ -55,9 +62,28 @@ def validate(instance: Mapping[str, Any], path: Path, code: str) -> None:
 
 
 def validate_event(event: Mapping[str, Any]) -> None:
-    validate(event, EVENT_SCHEMA_PATH, "EVENT_SCHEMA_VIOLATION")
+    """Validate against the schema named by the event's own schema_version (v0.1 or v0.2)."""
+    path = EVENT_SCHEMAS.get(str(event.get("schema_version")))
+    if path is None:
+        raise ContractViolation("EVENT_SCHEMA_VIOLATION", f"unknown schema_version {event.get('schema_version')!r}")
+    validate(event, path, "EVENT_SCHEMA_VIOLATION")
     if event.get("authority") != "NONE":  # belt and braces; schema already pins the const
         raise ContractViolation("AUTHORITY_NOT_NONE", "events never carry authority")
+
+
+def event_predecessors(event: Mapping[str, Any]) -> list[str]:
+    """Internal normalization only: v0.1 ``predecessor_event_id`` -> [x] / []; v0.2 -> its list. Payloads are never rewritten."""
+    if "predecessor_event_ids" in event:
+        return list(event["predecessor_event_ids"])
+    p = event.get("predecessor_event_id")
+    return [p] if p else []
+
+
+def event_usage_ceiling(budget: Mapping[str, Any]) -> float | None:
+    """Kilotoken ceiling under either name: v0.1 ``max_token_or_cost_units`` or v0.2 ``max_usage_units``."""
+    if "max_usage_units" in budget:
+        return budget["max_usage_units"]
+    return budget.get("max_token_or_cost_units")
 
 
 def validate_experience(experience: Mapping[str, Any]) -> None:
@@ -113,6 +139,8 @@ def event_budget(
 def new_event(
     *,
     mission_id: str,
+    schema_version: str = EVENT_SCHEMA_VERSION,
+    predecessor_event_ids: list[str] | None = None,
     task_id: str,
     verb: str,
     actor_ref: str,
@@ -132,13 +160,21 @@ def new_event(
     blocker_code: str | None = None,
     observed_at: str | None = None,
 ) -> dict[str, Any]:
-    """Build a fully-populated event. Validation happens at the blackboard boundary."""
-    return {
-        "schema_version": EVENT_SCHEMA_VERSION,
+    """Build a fully-populated event (v0.1 by default, v0.2 when requested). Validation happens at the blackboard."""
+    ev: dict[str, Any] = {
+        "schema_version": schema_version,
         "event_id": event_id or new_id("evt"),
         "mission_id": mission_id,
         "task_id": task_id,
-        "predecessor_event_id": predecessor_event_id,
+    }
+    if schema_version == EVENT_V2_SCHEMA_VERSION:
+        preds = list(predecessor_event_ids or ([] if predecessor_event_id is None else [predecessor_event_id]))
+        ev["predecessor_event_ids"] = preds
+    else:
+        if predecessor_event_ids and len(predecessor_event_ids) > 1:
+            raise ContractViolation("EVENT_SCHEMA_VIOLATION", "v0.1 events carry at most one predecessor; use v0.2")
+        ev["predecessor_event_id"] = predecessor_event_id if predecessor_event_id is not None else (predecessor_event_ids[0] if predecessor_event_ids else None)
+    ev.update({
         "verb": verb,
         "actor_ref": actor_ref,
         "executor_ref": executor_ref,
@@ -155,4 +191,5 @@ def new_event(
         "budget": dict(budget),
         "observed_at": observed_at or now_iso(),
         "authority": "NONE",
-    }
+    })
+    return ev

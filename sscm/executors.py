@@ -413,17 +413,21 @@ class MockExecutor:
 
     def __init__(self, executor_id: str, runtime_family: str, behaviour: Mapping[str, Callable[[ExecutorTask], dict[str, Any]]],
                  *, usage: Mapping[str, Mapping[str, Any]] | None = None, observability: Mapping[str, str] | None = None,
-                 log_writer: Mapping[str, Callable[[ExecutorTask], str]] | None = None) -> None:
+                 log_writer: Mapping[str, Callable[[ExecutorTask], str]] | None = None,
+                 session: Mapping[str, str | None] | None = None, session_identity_support: bool = True) -> None:
         self.executor_id = executor_id
         self.runtime_family = runtime_family
         self.behaviour = dict(behaviour)
         self.usage_by_role = {k: dict(v) for k, v in (usage or {}).items()}
         self.observability = dict(observability) if observability is not None else {d: OBSERVABLE for d in USAGE_DIMENSIONS}
         self.log_writer = dict(log_writer or {})
+        # role -> session ref override (None = the executor returned no session identity)
+        self.session_by_role: dict[str, str | None] = dict(session or {})
+        self.session_identity_support = session_identity_support
 
     def capability(self) -> ExecutorCapability:
         return ExecutorCapability(self.executor_id, self.runtime_family, "AVAILABLE", "NONE", True, "mock-0",
-                                  True, True, True, True, True, True, False, True, detail={"mock": True},
+                                  True, True, True, True, True, self.session_identity_support, False, True, detail={"mock": True},
                                   usage_observability=dict(self.observability))
 
     def run(self, task: ExecutorTask) -> ExecutorRun:
@@ -442,7 +446,8 @@ class MockExecutor:
         except Exception as ex:  # noqa: BLE001 - surfaced as a failed run, never raised through
             result, err, code = None, f"{type(ex).__name__}: {ex}", 1
         u = {**self.DEFAULT_USAGE, **self.usage_by_role.get(task.role, {})}
-        return ExecutorRun(self.executor_id, task.run_id, f"mock-session:{task.run_id}", code, t0, time.time(), result,
+        session = self.session_by_role[task.role] if task.role in self.session_by_role else f"mock-session:{task.run_id}"
+        return ExecutorRun(self.executor_id, task.run_id, session, code, t0, time.time(), result,
                            u.get("model_calls"), u.get("cost_units"), stdout_path, None, err,
                            executor_turns=u.get("executor_turns"), token_units=u.get("token_units"), usage_detail={"mock": True})
 

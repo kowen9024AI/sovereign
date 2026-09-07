@@ -1,0 +1,78 @@
+{
+  "blockers": [
+    {
+      "code": "RUN_RESERVATION_EXCEEDED",
+      "detail": "token_units observed 133.501 > reserved 120.0",
+      "stage": "MISSION"
+    }
+  ],
+  "disposition": "SOVEREIGN_SSCM_PARALLEL_BLOCKED",
+  "evidence_scan": {
+    "files_scanned": 26,
+    "order": "BEFORE_EXPERIENCE",
+    "result": "CLEAN"
+  },
+  "integration_sha": "36bcc2aa185edb8f530360af29ef53f0d0c77862",
+  "join": {
+    "event_id": "evt-09132df2-5efc-411d-9e40-1cb3e0adeb89",
+    "predecessor_event_ids": [
+      "evt-b8cacfda-18b4-4d0b-ac27-c3bb8817e95e",
+      "evt-54085e72-5b2d-415a-92c6-c55dc99de249"
+    ],
+    "state": "JOIN_READY"
+  },
+  "mission_id": "mission-sscm-01b-live-1",
+  "runs": {
+    "COORDINATOR": {
+      "session_ref": "0c314f81-cc00-4177-8455-49918fb5a7a5",
+      "usage": {
+        "cost_units": 0.234964,
+        "executor_turns": 2,
+        "model_calls": 2,
+        "token_units": 8.817,
+        "wall_seconds": 24.267
+      }
+    },
+    "REVIEWER": {
+      "session_ref": "9c8464bd-bdc3-4e57-9d67-b8a7885d2978",
+      "usage": {
+        "cost_units": 0.509086,
+        "executor_turns": 10,
+        "model_calls": 10,
+        "token_units": 133.501,
+        "wall_seconds": 68.155
+      }
+    },
+    "WORKER_A": {
+      "session_ref": "codex-thread:01a07a3c-e6d6-7b10-8ff7-03292f571880",
+      "usage": {
+        "cost_units": null,
+        "executor_turns": 1,
+        "model_calls": null,
+        "token_units": 105.595,
+        "wall_seconds": 116.087
+      }
+    },
+    "WORKER_B": {
+      "session_ref": "codex-thread:01a07a3c-e6a3-7372-b9e0-3d306b30b05c",
+      "usage": {
+        "cost_units": null,
+        "executor_turns": 1,
+        "model_calls": null,
+        "token_units": 87.435,
+        "wall_seconds": 33.131
+      }
+    }
+  },
+  "timing": {
+    "parallel_overlap_seconds": 33.131,
+    "worker_a_finished_at": 1788757321.4666224,
+    "worker_a_run_id": "run:worker_a-b0f3cf62-0230-463a-9d54-2ad53d2f440d",
+    "worker_a_session_ref": "codex-thread:01a07a3c-e6d6-7b10-8ff7-03292f571880",
+    "worker_a_started_at": 1788757205.379656,
+    "worker_b_finished_at": 1788757238.5102046,
+    "worker_b_run_id": "run:worker_b-f9286248-c722-4957-b067-8b11ef1417ed",
+    "worker_b_session_ref": "codex-thread:01a07a3c-e6a3-7372-b9e0-3d306b30b05c",
+    "worker_b_started_at": 1788757205.3794377
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "parallel_overlap_seconds": 36.568,
+  "worker_a_finished_at": 1788757560.5850992,
+  "worker_a_run_id": "run:worker_a-c63aa665-f009-49d2-94ad-13751ebe4a6c",
+  "worker_a_session_ref": "codex-thread:01a07a41-c199-71f3-9225-e49f4589aa6b",
+  "worker_a_started_at": 1788757524.0166378,
+  "worker_b_finished_at": 1788757562.343043,
+  "worker_b_run_id": "run:worker_b-89b7eef2-8ed7-46ae-a91e-b3d6eb63e09e",
+  "worker_b_session_ref": "codex-thread:01a07a41-c143-7f43-b658-49cb17a71085",
+  "worker_b_started_at": 1788757524.0164523
+}
