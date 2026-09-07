@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sovereign.local/contracts/collaboration/sscm-coordinator-instruction.v0.1.schema.json",
+  "title": "Sovereign SSCM Coordinator Instruction v0.1",
+  "description": "Structured, bounded implementation instruction published by a COORDINATOR for an IMPLEMENTER. Never a transcript.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "mission_id",
+    "task_id",
+    "role",
+    "target_role",
+    "objective",
+    "allowed_files",
+    "expected_content",
+    "verification_requirements",
+    "commit_required",
+    "authority"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "sovereign.sscm-coordinator-instruction.v0.1",
+      "type": "string"
+    },
+    "mission_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "role": {
+      "const": "COORDINATOR",
+      "type": "string"
+    },
+    "target_role": {
+      "const": "IMPLEMENTER",
+      "type": "string"
+    },
+    "objective": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "allowed_files": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "expected_content": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "minProperties": 1
+    },
+    "verification_requirements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "commit_required": {
+      "const": true,
+      "type": "boolean"
+    },
+    "notes": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "authority": {
+      "const": "NONE",
+      "type": "string"
+    }
+  }
+}

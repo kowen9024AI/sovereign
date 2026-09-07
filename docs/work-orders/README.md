@@ -27,3 +27,10 @@ A mirror may summarize the canonical body for local discoverability, but the cod
 Miskatonic work orders executed against or using Sovereign are canonically owned by their named Miskatonic repository, normally `Miskatonic-System/miskatonic-control-plane` for execution/harness qualification.
 
 The local mirror exists specifically so a coding agent launched from this standalone repository can discover the task without access to prior chat history.
+
+## Sovereign-native work orders in this repository
+
+| Work order | Status |
+|---|---|
+| [`WO-SOVEREIGN-QM-ADAPTER-00A`](WO-SOVEREIGN-QM-ADAPTER-00A.md) | `STRUCTURALLY_VALIDATED` |
+| [`WO-SOVEREIGN-SSCM-01A`](WO-SOVEREIGN-SSCM-01A.md) | `SOVEREIGN_SSCM_LOCAL_A2A_QUALIFIED` — [report](WO-SOVEREIGN-SSCM-01A-REPORT.md) |

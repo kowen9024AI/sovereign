@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sovereign.local/contracts/collaboration/sscm-implementer-result.v0.1.schema.json",
+  "title": "Sovereign SSCM Implementer Result v0.1",
+  "description": "Structured result returned by an IMPLEMENTER executor. claimed_candidate_revision is informational; host Git decides.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "role",
+    "status",
+    "claimed_candidate_revision",
+    "changed_files",
+    "tests_run",
+    "blockers",
+    "summary",
+    "authority"
+  ],
+  "properties": {
+    "role": {
+      "const": "IMPLEMENTER",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "SUCCEEDED",
+        "FAILED",
+        "BLOCKED"
+      ],
+      "type": "string"
+    },
+    "claimed_candidate_revision": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "Full 40-hex Git SHA-1 object id. Abbreviated prefixes are rejected; another object format needs a versioned contract extension."
+    },
+    "changed_files": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "tests_run": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "authority": {
+      "const": "NONE",
+      "type": "string"
+    }
+  }
+}

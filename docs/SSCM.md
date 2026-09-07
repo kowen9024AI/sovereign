@@ -2,7 +2,13 @@
 
 ## Status
 
-Portable architecture and contract bootstrap. No runtime, provider credential, training authority, knowledge authority, or automatic promotion is created by this document.
+`v0.1 IMPLEMENTED + LOCALLY QUALIFIED` — see [`work-orders/WO-SOVEREIGN-SSCM-01A-REPORT.md`](work-orders/WO-SOVEREIGN-SSCM-01A-REPORT.md) (`SOVEREIGN_SSCM_LOCAL_A2A_QUALIFIED`). The `sscm/` package provides the SQLite blackboard, executor contract with Claude Code and Codex adapters, isolated Git workspaces, the frozen 01A mission controller, and experience conversion. No provider credential, training authority, knowledge authority, or automatic promotion is created.
+
+```bash
+python3 -m sscm.local_cli capabilities                      # read-only executor discovery
+python3 -m sscm.local_cli dogfood --executors mock --base $(git rev-parse HEAD)   # offline wiring check
+python3 -m sscm.local_cli dogfood --executors live --base <canonical-sha>         # real Claude/Codex roster
+```
 
 ## Thesis
 
@@ -155,19 +161,39 @@ The mesh never promotes its own output automatically.
 
 ## Budget discipline
 
-Every mission should support explicit limits such as:
+Every mission carries a frozen budget. v0.1 dimensions and their exact semantics:
 
-```text
-max_active_actors
-max_turns
-max_model_calls
-max_wall_seconds
-max_repair_loops
-max_consecutive_failures
-max_token_or_cost_budget
-```
+| Dimension | Meaning | Charged from |
+|---|---|---|
+| `max_active_actors` | concurrent task claimants | coordination projection |
+| `max_coordination_transitions` | CLAIM + COMPLETE coordination events | coordination projection |
+| `max_turns` | executor-reported turns | `ExecutorRun.executor_turns` (Claude `num_turns`; Codex `turn.completed` count) |
+| `max_model_calls` | executor-reported model invocations | `ExecutorRun.model_calls` (Claude `num_turns`; Codex `UNOBSERVABLE`) |
+| `max_wall_seconds` | cumulative real mission wall time | host clock, checked before every launch |
+| `max_repair_loops` | RETRY events | coordination projection |
+| `max_consecutive_failures` | consecutive failures before a new CLAIM/RETRY is refused | coordination projection |
+| `max_token_or_cost_units` | normalized usage units = kilotokens (all input incl. cached + output) / 1000 | `ExecutorRun.token_units`; monetary cost is evidence only |
 
-Budget exhaustion produces a bounded terminal/blocking state. Agents cannot grant themselves additional budget or authority.
+`DECLARED_BUDGET != CONSUMED_BUDGET`: coordination events are not executor usage. Observed consumption is
+appended to a usage ledger on the blackboard after every executor run and enforced cumulatively; the pre-launch
+headroom gate refuses a new executor when any observed dimension is exhausted. Each executor declares which
+dimensions it can report from runtime output; a mission lists `required_observable_dimensions` and refuses a
+roster that cannot report one of them (`BUDGET_DIMENSION_UNOBSERVABLE`). Unknown usage is recorded `UNKNOWN`,
+never treated as zero, and an executor that claims a dimension but does not report it fails closed
+(`BUDGET_DIMENSION_UNREPORTED`). Budget exhaustion produces a bounded terminal/blocking state. Agents cannot
+grant themselves additional budget or authority.
+
+## Revision authority
+
+Structured results may carry a revision only as a full 40-hex Git object id, compared for exact equality with
+the host-observed revision. `REVISION_PREFIX_MATCH != EXACT_REVISION_MATCH`. A non-null contradictory claim fails
+closed; a null claim lets host verification establish the candidate.
+
+## Credential-safe terminalization
+
+All durable artifacts and provider stdout/stderr logs are credential-scanned before a mission-level SUCCEEDED
+event is appended and before any experience is created. `CREDENTIAL_SCAN_PENDING != MISSION_ACCEPTABLE`. A
+BLOCKED mission may yield an observed experience describing failure only from evidence that itself scanned CLEAN.
 
 ## Interoperability goal
 
