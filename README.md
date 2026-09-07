@@ -100,17 +100,18 @@ agent executor
 
 SSCM is deliberately executor-neutral: Claude Code, Codex, Antigravity, local models, QM, OpenClaw, and future systems may attach without requiring a common model API or shared credential broker.
 
-See [`docs/SSCM.md`](docs/SSCM.md) and [`contracts/a2a-collaboration-event.v0.1.schema.json`](contracts/a2a-collaboration-event.v0.1.schema.json).
+See [`docs/SSCM.md`](docs/SSCM.md) and [`contracts/collaboration/a2a-collaboration-event.v0.1.schema.json`](contracts/collaboration/a2a-collaboration-event.v0.1.schema.json).
 
 ## Core contracts
 
-The first version freezes portable JSON contracts under `contracts/`:
+The core promotion loop remains deliberately frozen at four portable JSON contracts:
 
 1. `experience.v0.1` — a bounded execution/experience candidate.
 2. `evaluation.v0.1` — independent evidence about that candidate.
 3. `promotion.v0.1` — an explicit proposal/decision boundary.
 4. `training-artifact.v0.1` — an accepted trajectory packaged for model specialization without implying permission to train.
-5. `a2a-collaboration-event.v0.1` — an executor-neutral stigmergic collaboration event with bounded budget and `authority: NONE`.
+
+SSCM collaboration contracts live separately under `contracts/collaboration/`. This keeps execution coordination replaceable and prevents the collaboration substrate from silently becoming part of the promotion authority plane.
 
 ## Miskatonic Systems relationship
 
