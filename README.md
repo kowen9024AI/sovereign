@@ -111,7 +111,7 @@ not copy-and-paste coupling.
 
 | Adapter | Maturity | Work order |
 |---|---|---|
-| [QM](adapters/qm/README.md) | `STRUCTURALLY_VALIDATED` | [WO-MSK-HARNESS-QM-01A](docs/work-orders/WO-MSK-HARNESS-QM-01A.md) |
+| [QM](adapters/qm/README.md) | `STRUCTURALLY_VALIDATED` | [WO-SOVEREIGN-QM-ADAPTER-00A](docs/work-orders/WO-SOVEREIGN-QM-ADAPTER-00A.md) |
 | GBrain | not started | |
 | Memorable | not started | |
 | River AI | not started | |
