@@ -13,10 +13,10 @@ import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from .artifacts import CredentialMaterialSuspected, RunDir
-from .blackboard import Blackboard, BlackboardError, MissionBudget
+from .blackboard import Blackboard, BlackboardError, BudgetExceeded, MissionBudget
 from .contracts import (
     CONTRACTS,
     ContractViolation,
@@ -50,7 +50,10 @@ class DogfoodSpec:
     target_file: str = "docs/sscm-dogfood.txt"
     expected_content: str = "SOVEREIGN_SSCM_OK\n"
     executor_timeout_seconds: int = 900
-    budget: MissionBudget = field(default_factory=lambda: MissionBudget(max_active_actors=1, max_repair_loops=0))
+    budget: MissionBudget = field(default_factory=lambda: MissionBudget(
+        max_active_actors=1, max_coordination_transitions=8, max_turns=24, max_model_calls=24,
+        max_wall_seconds=1800, max_repair_loops=0, max_consecutive_failures=1, max_token_or_cost_units=400.0,
+        required_observable_dimensions=("executor_turns", "token_units", "wall_seconds")))
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -81,6 +84,7 @@ class MissionController:
         mission_id: str | None = None,
         run_root: Path | None = None,
         workspace_root: Path | None = None,
+        clock: Callable[[], float] = time.time,
     ) -> None:
         missing = [r for r in ROLES if r not in executors]
         if missing:
@@ -91,7 +95,8 @@ class MissionController:
         self.run = RunDir(self.mission_id, run_root)
         self.bb = Blackboard(self.run.blackboard_path)
         self.ws = MissionWorkspaces(workspace_root or (self.run.root / "workspaces"), spec.canonical_checkout)
-        self.started_at = time.time()
+        self.clock = clock
+        self.started_at = clock()
         self.report: dict[str, Any] = {"mission_id": self.mission_id, "runs": {}, "events": [], "blockers": []}
         self._last_event_id: str | None = None
 
@@ -100,11 +105,14 @@ class MissionController:
     def _eb(self) -> dict[str, Any]:
         return self.spec.budget.event_budget()
 
+    def _elapsed(self) -> float:
+        return self.clock() - self.started_at
+
     def _remaining_seconds(self) -> int:
-        remaining = int(self.spec.budget.max_wall_seconds - (time.time() - self.started_at))
+        remaining = int(self.spec.budget.max_wall_seconds - self._elapsed())
         if remaining <= 0:
-            raise MissionAborted("BUDGET_EXCEEDED", "max_wall_seconds exhausted")
-        return min(remaining, self.spec.executor_timeout_seconds)
+            raise MissionAborted("BUDGET_EXCEEDED", "max_wall_seconds exhausted before launching the next executor")
+        return max(1, min(remaining, self.spec.executor_timeout_seconds))
 
     def _append(self, **kw: Any) -> dict[str, Any]:
         ev = new_event(mission_id=self.mission_id, budget=self._eb(), **kw)
@@ -115,15 +123,35 @@ class MissionController:
 
     def _executor_run(self, role: str, task_id: str, instruction: dict[str, Any], schema_path: Path, cwd: Path,
                       write_allowed: bool, extra_writable: list[Path]) -> tuple[ExecutorRun, dict[str, Any]]:
+        # pre-launch: cumulative wall clock and every observed usage dimension must still have headroom
+        try:
+            self.bb.assert_headroom(self.mission_id, elapsed_wall_seconds=self._elapsed())
+        except BudgetExceeded as ex:
+            raise MissionAborted("BUDGET_EXCEEDED", f"before {role}: {ex.detail}") from ex
         run_id = new_id(f"run:{role.lower()}")
         task = ExecutorTask(
             role=role, run_id=run_id, cwd=cwd, instruction=instruction, output_schema=load_schema(schema_path),
             timeout_seconds=self._remaining_seconds(), write_allowed=write_allowed,
             extra_writable_dirs=list(extra_writable), log_dir=self.run.path("logs"),
         )
-        result = self.executors[role].run(task)
+        executor = self.executors[role]
+        result = executor.run(task)
+        # Mock executors report a synthetic wall time; charge the host-observed one so wall accounting is real.
+        usage = result.usage()
+        usage["wall_seconds"] = round(max(usage["wall_seconds"], 0.0), 3)
         receipt = self.run.write_json(f"artifacts/{role.lower()}-run.json", result.as_dict(), kind="RECEIPT")
         self.report["runs"][role] = {**result.as_dict(), "receipt": receipt}
+        # post-run: charge observed consumption; the usage row is durable even when the charge exceeds the budget
+        try:
+            self.report["budget"] = self.bb.record_usage(
+                self.mission_id, run_id=run_id, role=role, executor_ref=result.executor_id,
+                usage=usage, observability=executor.capability().usage_observability)
+        except BudgetExceeded as ex:
+            self.report["budget"] = self.bb.usage_projection(self.mission_id)
+            raise MissionAborted("BUDGET_EXCEEDED", f"after {role}: {ex.detail}") from ex
+        except BlackboardError as ex:
+            self.report["budget"] = self.bb.usage_projection(self.mission_id)
+            raise MissionAborted(ex.code, ex.detail) from ex
         return result, receipt
 
     def _validate_result(self, role: str, run: ExecutorRun, schema_path: Path, code: str) -> dict[str, Any]:
@@ -171,6 +199,13 @@ class MissionController:
                 raise MissionAborted("AUTHORITY_NOT_NONE", f"{role} executor claims authority {c['authority']}")
         if caps["IMPLEMENTER"]["runtime_family"] == caps["REVIEWER"]["runtime_family"]:
             raise MissionAborted("RUNTIME_NOT_DISTINCT", "implementer and reviewer share a runtime family")
+        # every required budget dimension must be runtime-observable on every roster executor (fail closed)
+        for role in ROLES:
+            obs = caps[role].get("usage_observability", {})
+            for dim in self.spec.budget.required_observable_dimensions:
+                if obs.get(dim) != "OBSERVABLE":
+                    raise MissionAborted("BUDGET_DIMENSION_UNOBSERVABLE",
+                                         f"{role} executor {caps[role]['executor_id']} cannot report required budget dimension {dim}")
 
     def _coordinate(self) -> tuple[dict[str, Any], dict[str, Any]]:
         spec = self.spec
@@ -254,7 +289,8 @@ class MissionController:
         spec = self.spec
         verification = self.ws.verify_candidate(wt, spec.base_sha, {spec.target_file: spec.expected_content})
         verified = verification["verified_candidate_revision"]
-        if claimed and not verified.startswith(claimed):
+        # exact object-id equality; a non-null contradictory claim fails closed (no prefix/abbreviation logic)
+        if claimed is not None and claimed != verified:
             raise MissionAborted("CANDIDATE_CLAIM_MISMATCH", f"implementer claimed {claimed}, host observed {verified}")
         verification["claimed_candidate_revision"] = claimed
         ref = self.run.write_json("artifacts/host-candidate-verification.json", verification)
@@ -316,7 +352,7 @@ class MissionController:
 
     def _host_verify_review(self, wt: Path, verified: str, review: dict[str, Any], complete: dict[str, Any]) -> dict[str, Any]:
         host = self.ws.verify_reviewer(wt, verified)  # raises REVIEW_SHA_MISMATCH
-        if not verified.startswith(review["reviewed_revision"]):
+        if review["reviewed_revision"] != verified:  # exact equality, never prefix
             raise MissionAborted("REVIEW_SHA_MISMATCH", f"reviewer reported {review['reviewed_revision']}, host verified {verified}")
         host["reviewed_revision_matches"] = True
         host["verdict"] = review["verdict"]
@@ -337,6 +373,13 @@ class MissionController:
         for verb, n in required.items():
             if proj.verbs.get(verb, 0) < n:
                 raise MissionAborted("EVENT_CHAIN_INCOMPLETE", f"expected >= {n} {verb}, saw {proj.verbs.get(verb, 0)}")
+        usage = self.bb.usage_projection(self.mission_id)
+        if usage["budget_exceeded"]:
+            raise MissionAborted("BUDGET_EXCEEDED", f"dimensions over limit at terminalization: {usage['budget_exceeded']}")
+        # Acceptance gate: every durable artifact AND provider stdout/stderr log written so far is scanned
+        # before terminal success exists anywhere. Not CLEAN => no SUCCEEDED event, no SUCCEEDED experience.
+        scanned = self.run.scan_all()  # raises CredentialMaterialSuspected
+        self.report["credential_scan"] = {"files_scanned": len(scanned), "result": "CLEAN", "order": "BEFORE_TERMINAL_SUCCESS"}
         self._append(task_id=self.mission_id, verb="COMPLETE", actor_ref=HOST_ACTOR, candidate_revision=observe["candidate_revision"],
                      base_revision=self.spec.base_sha, input_refs=list(observe["output_refs"]), status="SUCCEEDED",
                      predecessor_event_id=observe["event_id"])
@@ -357,26 +400,35 @@ class MissionController:
         proj = self.bb.project(self.mission_id)
         self.report["projection"] = proj.as_dict()
         self.report["mission_terminal_status"] = proj.status
+        self.report["budget"] = self.bb.usage_projection(self.mission_id)
         events = self.bb.events(self.mission_id)
-        if proj.status in ("SUCCEEDED", "BLOCKED", "FAILED", "CANCELLED"):
-            refs = [r for e in events for r in e.get("output_refs", [])]
-            exp = mission_to_experience(proj, events, started_at=self.started_at, completed_at=time.time(),
-                                        executors_used=[c["executor_id"] for c in self.report.get("capabilities", {}).values()], artifact_refs=refs)
-            self.report["experience"] = exp
-            self.report["experience_ref"] = self.run.write_json("artifacts/experience.json", exp, kind="EXPERIENCE")
         self.report["evaluation_created"] = False
         self.report["promotion_created"] = False
         self.report["training_artifact_created"] = False
+        self.report["experience_created"] = False
         self.report["blackboard_path"] = str(self.run.blackboard_path)
         self.report["run_dir"] = str(self.run.root)
-        # Independent scan of every durable artifact/log before the evidence is accepted (section 50).
+        # Final gate over everything durable (artifacts + provider logs). A SUCCEEDED mission already passed this
+        # gate before its terminal event; a BLOCKED/FAILED mission may still yield an observed experience, but only
+        # from evidence that itself scans CLEAN (section 18).
         try:
             scanned = self.run.scan_all()
-            self.report["credential_scan"] = {"files_scanned": len(scanned), "result": "CLEAN"}
+            prior = self.report.get("credential_scan", {})
+            self.report["credential_scan"] = {"files_scanned": len(scanned), "result": "CLEAN",
+                                              "order": prior.get("order", "BEFORE_EXPERIENCE")}
+            clean = True
         except CredentialMaterialSuspected as ex:
-            self.report["credential_scan"] = {"result": "REJECTED", "detail": str(ex)}
+            self.report["credential_scan"] = {"result": "REJECTED", "detail": str(ex), "order": "BEFORE_EXPERIENCE"}
             self.report["disposition"] = DISPOSITION_BLOCKED
             self.report["blockers"].append({"stage": "EVIDENCE", "code": ex.code, "detail": str(ex)})
+            clean = False
+        if clean and proj.status in ("SUCCEEDED", "BLOCKED", "FAILED", "CANCELLED"):
+            refs = [r for e in events for r in e.get("output_refs", [])]
+            exp = mission_to_experience(proj, events, started_at=self.started_at, completed_at=self.clock(),
+                                        executors_used=[c["executor_id"] for c in self.report.get("capabilities", {}).values()], artifact_refs=refs)
+            self.report["experience"] = exp
+            self.report["experience_ref"] = self.run.write_json("artifacts/experience.json", exp, kind="EXPERIENCE")
+            self.report["experience_created"] = True
         if cleanup:
             self.report["cleanup"] = self.ws.destroy()
         self.report.setdefault("disposition", DISPOSITION_BLOCKED)

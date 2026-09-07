@@ -22,7 +22,8 @@
     },
     "reviewed_revision": {
       "type": "string",
-      "pattern": "^[0-9a-f]{7,40}$"
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "Full 40-hex Git SHA-1 object id. Abbreviated prefixes are rejected; another object format needs a versioned contract extension."
     },
     "verdict": {
       "enum": [

@@ -82,19 +82,45 @@ class MissionUnknown(BlackboardError):
 
 @dataclass(frozen=True)
 class MissionBudget:
+    """Frozen mission budget. Nothing at runtime may raise it.
+
+    Dimension semantics (v0.1):
+
+    * ``max_active_actors``            concurrent task claimants (coordination projection)
+    * ``max_coordination_transitions`` CLAIM + COMPLETE coordination events (coordination projection)
+    * ``max_turns``                    executor-reported turns, charged from ``ExecutorRun.executor_turns``
+    * ``max_model_calls``              executor-reported model invocations, charged from ``ExecutorRun.model_calls``
+    * ``max_wall_seconds``             real cumulative mission wall time (host clock)
+    * ``max_repair_loops``             RETRY events
+    * ``max_consecutive_failures``     consecutive FAILED/REJECT before a new CLAIM/RETRY is refused
+    * ``max_token_or_cost_units``      normalized usage units = kilotokens (all input incl. cached + output) / 1000,
+                                       charged from ``ExecutorRun.token_units``. Monetary cost is evidence only.
+    * ``required_observable_dimensions`` usage dimensions every roster executor must be able to report from
+                                       runtime output; a roster that cannot is refused before launch
+                                       (BUDGET_DIMENSION_UNOBSERVABLE). Dimensions not required are still
+                                       enforced whenever observed and recorded UNKNOWN otherwise.
+    """
+
     max_active_actors: int = 1
-    max_turns: int = 8
-    max_model_calls: int = 30
+    max_coordination_transitions: int = 16
+    max_turns: int = 40
+    max_model_calls: int = 60
     max_wall_seconds: int = 1800
     max_repair_loops: int = 0
     max_consecutive_failures: int = 1
-    max_token_or_cost_units: float = 5.0
+    max_token_or_cost_units: float = 400.0
+    required_observable_dimensions: tuple[str, ...] = ("executor_turns", "token_units", "wall_seconds")
+
+    USAGE_LIMITS = {"executor_turns": "max_turns", "model_calls": "max_model_calls",
+                    "token_units": "max_token_or_cost_units", "wall_seconds": "max_wall_seconds"}
 
     def as_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        d["required_observable_dimensions"] = list(self.required_observable_dimensions)
+        return d
 
     def event_budget(self) -> dict[str, Any]:
-        """Projection of the mission budget onto the per-event budget object."""
+        """Projection of the mission budget onto the per-event budget object (executor-usage ceilings)."""
         return {
             "max_turns": self.max_turns,
             "max_wall_seconds": self.max_wall_seconds,
@@ -103,9 +129,15 @@ class MissionBudget:
             "max_token_or_cost_units": self.max_token_or_cost_units,
         }
 
+    def limit(self, dimension: str) -> float | int:
+        return getattr(self, self.USAGE_LIMITS[dimension])
+
     @classmethod
     def from_dict(cls, d: Mapping[str, Any]) -> "MissionBudget":
-        return cls(**{k: d[k] for k in cls.__dataclass_fields__ if k in d})  # type: ignore[arg-type]
+        kw = {k: d[k] for k in cls.__dataclass_fields__ if k in d}  # type: ignore[attr-defined]
+        if "required_observable_dimensions" in kw:
+            kw["required_observable_dimensions"] = tuple(kw["required_observable_dimensions"])
+        return cls(**kw)  # type: ignore[arg-type]
 
 
 # --------------------------------------------------------------------------
@@ -154,6 +186,20 @@ CREATE TABLE IF NOT EXISTS events (
   payload_json          TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS events_mission ON events(mission_id);
+CREATE TABLE IF NOT EXISTS usage (
+  mission_id       TEXT NOT NULL REFERENCES missions(mission_id),
+  run_id           TEXT NOT NULL UNIQUE,
+  role             TEXT NOT NULL,
+  executor_ref     TEXT NOT NULL,
+  executor_turns   INTEGER,
+  model_calls      INTEGER,
+  token_units      REAL,
+  cost_units       REAL,
+  wall_seconds     REAL NOT NULL,
+  observability_json TEXT NOT NULL,
+  recorded_at      TEXT NOT NULL,
+  canonical_digest TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS claims (
   mission_id  TEXT NOT NULL,
   task_id     TEXT NOT NULL,
@@ -193,7 +239,7 @@ class MissionProjection:
     event_count: int = 0
     verbs: dict[str, int] = field(default_factory=dict)
     terminal_event_id: str | None = None
-    turns: int = 0
+    coordination_transitions: int = 0
     failures_consecutive: int = 0
     distinct_actors: list[str] = field(default_factory=list)
 
@@ -207,7 +253,7 @@ class MissionProjection:
             "event_count": self.event_count,
             "verbs": dict(sorted(self.verbs.items())),
             "terminal_event_id": self.terminal_event_id,
-            "turns": self.turns,
+            "coordination_transitions": self.coordination_transitions,
             "failures_consecutive": self.failures_consecutive,
             "distinct_actors": self.distinct_actors,
         }
@@ -255,7 +301,7 @@ def project(mission_id: str, budget: Mapping[str, Any], events: Iterable[Mapping
             t.executor_ref = e.get("executor_ref")
             t.workspace_ref = e.get("workspace_ref")
         if e["verb"] in ("CLAIM", "COMPLETE"):
-            proj.turns += 1
+            proj.coordination_transitions += 1
         if e["status"] == "FAILED" or e["verb"] == "REJECT":
             proj.failures_consecutive += 1
         elif e["verb"] == "COMPLETE" and e["status"] == "SUCCEEDED":
@@ -466,8 +512,8 @@ class Blackboard:
 
     @staticmethod
     def _enforce_budget(budget: MissionBudget, proj: MissionProjection, payload: Mapping[str, Any]) -> None:
-        if payload["verb"] in ("CLAIM", "COMPLETE") and proj.turns + 1 > budget.max_turns:
-            raise BudgetExceeded("max_turns", budget.max_turns, proj.turns + 1)
+        if payload["verb"] in ("CLAIM", "COMPLETE") and proj.coordination_transitions + 1 > budget.max_coordination_transitions:
+            raise BudgetExceeded("max_coordination_transitions", budget.max_coordination_transitions, proj.coordination_transitions + 1)
         if payload["verb"] == "CLAIM":
             active = {t.claimed_by for t in proj.tasks.values() if t.claimed_by and t.status in ("ACTIVE", "PENDING")}
             if payload["actor_ref"] not in active and len(active) + 1 > budget.max_active_actors:
@@ -488,3 +534,93 @@ class Blackboard:
             raise BudgetExceeded("max_model_calls", budget.max_model_calls, eb["max_model_calls"])
         if eb.get("max_token_or_cost_units") is not None and eb["max_token_or_cost_units"] > budget.max_token_or_cost_units:
             raise BudgetExceeded("max_token_or_cost_units", budget.max_token_or_cost_units, eb["max_token_or_cost_units"])
+
+
+    # -- executor usage ledger (Part B) ---------------------------------------------------------
+
+    def usage_projection(self, mission_id: str) -> dict[str, Any]:
+        """Runtime-observed consumption summed over recorded executor runs, with observability per dimension."""
+        budget = self.budget(mission_id)
+        rows = self._conn().execute(
+            "SELECT * FROM usage WHERE mission_id=? ORDER BY run_id", (mission_id,)
+        ).fetchall()
+        totals: dict[str, float] = {"executor_turns": 0, "model_calls": 0, "token_units": 0.0, "cost_units": 0.0, "wall_seconds": 0.0}
+        unknown: dict[str, list[str]] = {d: [] for d in totals}
+        for r in rows:
+            for d in totals:
+                v = r[d]
+                if v is None:
+                    unknown[d].append(r["run_id"])
+                else:
+                    totals[d] += v
+        totals = {k: (round(v, 3) if isinstance(v, float) else v) for k, v in totals.items()}
+        observable = {d: ("OBSERVED" if not unknown[d] else "UNKNOWN") for d in totals}
+        exceeded = [d for d in ("executor_turns", "model_calls", "token_units", "wall_seconds")
+                    if not unknown[d] and totals[d] > budget.limit(d)]
+        return {
+            "observed_executor_runs": len(rows),
+            "observed_executor_turns": totals["executor_turns"],
+            "observed_model_calls": totals["model_calls"],
+            "observed_cost_or_token_units": totals["token_units"],
+            "observed_cost_usd_evidence_only": totals["cost_units"],
+            "observed_wall_seconds": totals["wall_seconds"],
+            "budget_limits": budget.as_dict(),
+            "budget_dimensions_observable": observable,
+            "unknown_runs_by_dimension": {d: v for d, v in unknown.items() if v},
+            "budget_exceeded": exceeded,
+        }
+
+    def record_usage(self, mission_id: str, *, run_id: str, role: str, executor_ref: str,
+                     usage: Mapping[str, Any], observability: Mapping[str, str]) -> dict[str, Any]:
+        """Append one executor run's observed usage, then enforce cumulative limits.
+
+        Idempotent on (run_id, same payload). A dimension the executor declared OBSERVABLE but did not report
+        is refused (BUDGET_DIMENSION_UNREPORTED): unknown is never silently zero. Exceeding any observed
+        dimension raises BudgetExceeded after the usage row is durably recorded, so the evidence survives.
+        """
+        budget = self.budget(mission_id)
+        for dim in ("executor_turns", "model_calls", "token_units", "wall_seconds"):
+            if observability.get(dim) == "OBSERVABLE" and usage.get(dim) is None:
+                raise BlackboardError("BUDGET_DIMENSION_UNREPORTED", f"{role}/{executor_ref} claims {dim} observable but reported none")
+        payload = {"mission_id": mission_id, "run_id": run_id, "role": role, "executor_ref": executor_ref,
+                   **{d: usage.get(d) for d in ("executor_turns", "model_calls", "token_units", "cost_units", "wall_seconds")},
+                   "observability": dict(observability)}
+        if payload["wall_seconds"] is None:
+            raise BlackboardError("BUDGET_DIMENSION_UNREPORTED", "wall_seconds is always host-observed and must be present")
+        dig = digest(payload)
+        c = self._conn()
+        c.execute("BEGIN IMMEDIATE")
+        try:
+            existing = c.execute("SELECT canonical_digest FROM usage WHERE run_id=?", (run_id,)).fetchone()
+            if existing is not None:
+                if existing["canonical_digest"] != dig:
+                    raise BlackboardError("USAGE_RUN_CONFLICT", f"run {run_id} already recorded with different usage")
+            else:
+                c.execute(
+                    """INSERT INTO usage(mission_id, run_id, role, executor_ref, executor_turns, model_calls, token_units,
+                       cost_units, wall_seconds, observability_json, recorded_at, canonical_digest) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (mission_id, run_id, role, executor_ref, payload["executor_turns"], payload["model_calls"], payload["token_units"],
+                     payload["cost_units"], payload["wall_seconds"], canonical_json(payload["observability"]).decode(), now_iso(), dig),
+                )
+            c.execute("COMMIT")
+        except BaseException:
+            c.execute("ROLLBACK")
+            raise
+        proj = self.usage_projection(mission_id)
+        if proj["budget_exceeded"]:
+            d = proj["budget_exceeded"][0]
+            raise BudgetExceeded(budget.USAGE_LIMITS[d], budget.limit(d), proj[{"executor_turns": "observed_executor_turns", "model_calls": "observed_model_calls", "token_units": "observed_cost_or_token_units", "wall_seconds": "observed_wall_seconds"}[d]])
+        return proj
+
+    def assert_headroom(self, mission_id: str, *, elapsed_wall_seconds: float) -> None:
+        """Pre-launch gate: refuse a new executor when any observed dimension has no headroom left."""
+        budget = self.budget(mission_id)
+        if elapsed_wall_seconds >= budget.max_wall_seconds:
+            raise BudgetExceeded("max_wall_seconds", budget.max_wall_seconds, round(elapsed_wall_seconds, 3))
+        proj = self.usage_projection(mission_id)
+        if proj["budget_exceeded"]:
+            d = proj["budget_exceeded"][0]
+            raise BudgetExceeded(budget.USAGE_LIMITS[d], budget.limit(d), "already exceeded")
+        for dim, key in (("executor_turns", "observed_executor_turns"), ("model_calls", "observed_model_calls"), ("token_units", "observed_cost_or_token_units")):
+            if proj["budget_dimensions_observable"][dim] == "OBSERVED" and proj["observed_executor_runs"] and proj[key] >= budget.limit(dim):
+                raise BudgetExceeded(budget.USAGE_LIMITS[dim], budget.limit(dim), f"{proj[key]} consumed; no headroom for another run")

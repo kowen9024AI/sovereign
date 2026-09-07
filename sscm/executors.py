@@ -53,9 +53,27 @@ class ExecutorCapability:
     cancellation_support: bool
     authority: str = "NONE"
     detail: dict[str, Any] = field(default_factory=dict)
+    # Which budget dimensions this executor can report from runtime-observed output (never model prose).
+    usage_observability: dict[str, str] = field(default_factory=lambda: dict(UNOBSERVABLE_USAGE))
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+USAGE_DIMENSIONS = ("executor_turns", "model_calls", "token_units", "cost_units", "wall_seconds")
+OBSERVABLE = "OBSERVABLE"
+UNOBSERVABLE = "UNOBSERVABLE"
+UNOBSERVABLE_USAGE = {d: UNOBSERVABLE for d in USAGE_DIMENSIONS}
+
+
+def token_units(input_tokens: int | None, output_tokens: int | None) -> float | None:
+    """v0.1 normalized usage unit: kilotokens = (all input tokens incl. cached + all output tokens) / 1000.
+
+    Deterministic and provider-neutral; monetary cost is recorded separately as evidence only.
+    """
+    if input_tokens is None or output_tokens is None:
+        return None
+    return round((int(input_tokens) + int(output_tokens)) / 1000.0, 3)
 
 
 @dataclass
@@ -86,14 +104,28 @@ class ExecutorRun:
     stderr_path: str | None
     error: str | None = None
     authority: str = "NONE"
+    executor_turns: int | None = None
+    token_units: float | None = None
+    usage_detail: dict[str, Any] = field(default_factory=dict)
 
     @property
     def wall_seconds(self) -> float:
         return self.finished_at - self.started_at
 
+    def usage(self) -> dict[str, Any]:
+        """Runtime-observed consumption in budget dimensions. None = not reported by this run."""
+        return {
+            "executor_turns": self.executor_turns,
+            "model_calls": self.model_calls,
+            "token_units": self.token_units,
+            "cost_units": self.cost_units,
+            "wall_seconds": round(self.wall_seconds, 3),
+        }
+
     def as_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["wall_seconds"] = round(self.wall_seconds, 3)
+        d["usage"] = self.usage()
         return d
 
 
@@ -205,6 +237,9 @@ class ClaudeCodeExecutor:
             structured_output_support=detail.get("flag:--json-schema", False),
             session_identity_support=detail.get("flag:--session-id", False),
             resume_support=True, cancellation_support=True, detail=detail,
+            # --output-format json envelope: num_turns, usage.{input,output,cache_*}_tokens, total_cost_usd
+            usage_observability={"executor_turns": OBSERVABLE, "model_calls": OBSERVABLE, "token_units": OBSERVABLE,
+                                 "cost_units": OBSERVABLE, "wall_seconds": OBSERVABLE},
         )
 
     def run(self, task: ExecutorTask) -> ExecutorRun:
@@ -235,17 +270,30 @@ class ClaudeCodeExecutor:
         return _spawn(self.executor_id, task, cmd, session_hint=session_id, parse=_parse_claude, stdin_text=_instruction_prompt(task))
 
 
-def _parse_claude(stdout: str, session_hint: str | None) -> tuple[dict[str, Any] | None, str | None, int | None, float | None]:
+def _parse_claude(stdout: str, session_hint: str | None) -> tuple[dict[str, Any] | None, str | None, dict[str, Any]]:
     envelope = _extract_json_object(stdout)
     if not envelope:
-        return None, session_hint, None, None
+        return None, session_hint, {}
     structured = envelope.get("structured_output")
     if not isinstance(structured, dict):
         structured = _extract_json_object(str(envelope.get("result", "")))
     session = envelope.get("session_id") or session_hint
     turns = envelope.get("num_turns")
+    turns = int(turns) if isinstance(turns, (int, float)) else None
     cost = envelope.get("total_cost_usd")
-    return structured, session, (int(turns) if isinstance(turns, (int, float)) else None), (float(cost) if isinstance(cost, (int, float)) else None)
+    u = envelope.get("usage") if isinstance(envelope.get("usage"), dict) else {}
+    tin = None
+    if all(isinstance(u.get(k), (int, float)) for k in ("input_tokens", "output_tokens")):
+        tin = int(u["input_tokens"]) + int(u.get("cache_creation_input_tokens") or 0) + int(u.get("cache_read_input_tokens") or 0)
+    usage = {
+        # Claude Code reports assistant turns; each is one model response, so it doubles as the model-call count.
+        "executor_turns": turns,
+        "model_calls": turns,
+        "token_units": token_units(tin, u.get("output_tokens") if tin is not None else None),
+        "cost_units": float(cost) if isinstance(cost, (int, float)) else None,
+        "detail": {k: u.get(k) for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens") if k in u},
+    }
+    return structured, session, usage
 
 
 # --------------------------------------------------------------------------
@@ -288,6 +336,10 @@ class CodexExecutor:
             structured_output_support=detail.get("flag:--output-schema", False),
             session_identity_support=detail.get("flag:--json", False),
             resume_support=True, cancellation_support=True, detail=detail,
+            # --json events expose turn.completed{usage} only: turns and tokens are observable, per-call
+            # model invocations and monetary cost are not (honestly UNOBSERVABLE, never assumed zero).
+            usage_observability={"executor_turns": OBSERVABLE, "model_calls": UNOBSERVABLE, "token_units": OBSERVABLE,
+                                 "cost_units": UNOBSERVABLE, "wall_seconds": OBSERVABLE},
         )
 
     def run(self, task: ExecutorTask) -> ExecutorRun:
@@ -307,25 +359,40 @@ class CodexExecutor:
             cmd += ["--add-dir", str(d)]
         cmd.append(_instruction_prompt(task))
 
-        def parse(stdout: str, hint: str | None) -> tuple[dict[str, Any] | None, str | None, int | None, float | None]:
-            session = hint
-            model_calls = 0
-            for line in stdout.splitlines():
-                try:
-                    ev = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                t = ev.get("type", "")
-                if t in ("thread.started",) and ev.get("thread_id"):
-                    session = f"codex-thread:{ev['thread_id']}"
-                if t == "turn.completed" or t.endswith("turn.completed"):
-                    model_calls += 1
-            structured = None
-            if last_path.exists():
-                structured = _extract_json_object(last_path.read_text(encoding="utf-8"))
-            return structured, session, (model_calls or None), None
+        return _spawn(self.executor_id, task, cmd, session_hint=None, parse=lambda out, hint: _parse_codex(out, hint, last_path))
 
-        return _spawn(self.executor_id, task, cmd, session_hint=None, parse=parse)
+
+def _parse_codex(stdout: str, hint: str | None, last_path: Path) -> tuple[dict[str, Any] | None, str | None, dict[str, Any]]:
+    session = hint
+    turns = 0
+    tin = tout = 0
+    saw_usage = False
+    for line in stdout.splitlines():
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        t = ev.get("type", "")
+        if t == "thread.started" and ev.get("thread_id"):
+            session = f"codex-thread:{ev['thread_id']}"
+        if t == "turn.completed":
+            turns += 1
+            u = ev.get("usage") if isinstance(ev.get("usage"), dict) else None
+            if u and isinstance(u.get("input_tokens"), (int, float)) and isinstance(u.get("output_tokens"), (int, float)):
+                saw_usage = True
+                tin += int(u["input_tokens"])  # Codex input_tokens already includes cached input
+                tout += int(u["output_tokens"])
+    structured = None
+    if last_path.exists():
+        structured = _extract_json_object(last_path.read_text(encoding="utf-8"))
+    usage = {
+        "executor_turns": turns if turns else None,
+        "model_calls": None,  # UNOBSERVABLE from codex exec --json
+        "token_units": token_units(tin, tout) if saw_usage else None,
+        "cost_units": None,  # UNOBSERVABLE (subscription)
+        "detail": {"input_tokens_incl_cached": tin, "output_tokens": tout} if saw_usage else {},
+    }
+    return structured, session, usage
 
 
 # --------------------------------------------------------------------------
@@ -334,26 +401,50 @@ class CodexExecutor:
 
 
 class MockExecutor:
-    """Deterministic stand-in. ``behaviour`` maps role -> callable(task) -> result dict."""
+    """Deterministic stand-in. ``behaviour`` maps role -> callable(task) -> result dict.
 
-    def __init__(self, executor_id: str, runtime_family: str, behaviour: Mapping[str, Callable[[ExecutorTask], dict[str, Any]]]) -> None:
+    ``usage`` maps role -> usage dict (executor_turns, model_calls, token_units, cost_units); missing keys
+    are reported as None. ``observability`` overrides the capability's declared dimensions.
+    ``log_writer`` maps role -> callable(task) -> text written to the run's durable stdout log, so tests can
+    exercise the late-log credential gate.
+    """
+
+    DEFAULT_USAGE = {"executor_turns": 1, "model_calls": 1, "token_units": 0.5, "cost_units": 0.0}
+
+    def __init__(self, executor_id: str, runtime_family: str, behaviour: Mapping[str, Callable[[ExecutorTask], dict[str, Any]]],
+                 *, usage: Mapping[str, Mapping[str, Any]] | None = None, observability: Mapping[str, str] | None = None,
+                 log_writer: Mapping[str, Callable[[ExecutorTask], str]] | None = None) -> None:
         self.executor_id = executor_id
         self.runtime_family = runtime_family
         self.behaviour = dict(behaviour)
+        self.usage_by_role = {k: dict(v) for k, v in (usage or {}).items()}
+        self.observability = dict(observability) if observability is not None else {d: OBSERVABLE for d in USAGE_DIMENSIONS}
+        self.log_writer = dict(log_writer or {})
 
     def capability(self) -> ExecutorCapability:
         return ExecutorCapability(self.executor_id, self.runtime_family, "AVAILABLE", "NONE", True, "mock-0",
-                                  True, True, True, True, True, True, False, True, detail={"mock": True})
+                                  True, True, True, True, True, True, False, True, detail={"mock": True},
+                                  usage_observability=dict(self.observability))
 
     def run(self, task: ExecutorTask) -> ExecutorRun:
         t0 = time.time()
+        stdout_path = None
+        if task.role in self.log_writer:
+            log_dir = task.log_dir or task.cwd
+            log_dir.mkdir(parents=True, exist_ok=True)
+            p = log_dir / f"{task.run_id}.stdout.log"
+            p.write_text(self.log_writer[task.role](task), encoding="utf-8")
+            stdout_path = str(p)
         try:
             result = self.behaviour[task.role](task)
             err = None
             code = 0
         except Exception as ex:  # noqa: BLE001 - surfaced as a failed run, never raised through
             result, err, code = None, f"{type(ex).__name__}: {ex}", 1
-        return ExecutorRun(self.executor_id, task.run_id, f"mock-session:{task.run_id}", code, t0, time.time(), result, 1, 0.0, None, None, err)
+        u = {**self.DEFAULT_USAGE, **self.usage_by_role.get(task.role, {})}
+        return ExecutorRun(self.executor_id, task.run_id, f"mock-session:{task.run_id}", code, t0, time.time(), result,
+                           u.get("model_calls"), u.get("cost_units"), stdout_path, None, err,
+                           executor_turns=u.get("executor_turns"), token_units=u.get("token_units"), usage_detail={"mock": True})
 
 
 # --------------------------------------------------------------------------
@@ -380,7 +471,10 @@ def _spawn(executor_id: str, task: ExecutorTask, cmd: list[str], *, session_hint
         code, error = 127, str(ex)
     t1 = time.time()
     stdout = out_p.read_text(encoding="utf-8", errors="replace") if out_p.exists() else ""
-    structured, session, calls, cost = parse(stdout, session_hint)
+    structured, session, usage = parse(stdout, session_hint)
     if structured is None and error is None and code == 0:
         error = "executor exited 0 without a parsable structured result"
-    return ExecutorRun(executor_id, task.run_id, session, code, t0, t1, structured, calls, cost, str(out_p), str(err_p), error)
+    return ExecutorRun(executor_id, task.run_id, session, code, t0, t1, structured,
+                       usage.get("model_calls"), usage.get("cost_units"), str(out_p), str(err_p), error,
+                       executor_turns=usage.get("executor_turns"), token_units=usage.get("token_units"),
+                       usage_detail=dict(usage.get("detail") or {}))

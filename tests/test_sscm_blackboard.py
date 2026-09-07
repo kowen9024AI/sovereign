@@ -158,15 +158,15 @@ def test_concurrent_exclusive_claim_exactly_one_winner(tmp_path):
 # -- budgets ------------------------------------------------------------------------------
 
 
-def test_budget_max_turns_blocks_deterministically(tmp_path):
-    tight = MissionBudget(max_turns=1, max_active_actors=3)
+def test_budget_max_coordination_transitions_blocks_deterministically(tmp_path):
+    tight = MissionBudget(max_coordination_transitions=1, max_active_actors=3)
     bb = Blackboard(tmp_path / "b.sqlite")
     bb.create_mission("m", tight, {})
     p = bb.append(ev(mission="m", budget=tight))
     bb.append(ev(mission="m", verb="CLAIM", status="ACTIVE", pred=p["event_id"], budget=tight))
     with pytest.raises(BudgetExceeded) as ei:
         bb.append(ev(mission="m", task="t2", verb="CLAIM", status="ACTIVE", actor="b", pred=p["event_id"], budget=tight))
-    assert ei.value.dimension == "max_turns"
+    assert ei.value.dimension == "max_coordination_transitions"
 
 
 def test_budget_max_active_actors(bb):

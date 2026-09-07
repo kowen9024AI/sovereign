@@ -124,3 +124,15 @@ Neither was touched at runtime.
 ## Not claimed
 
 Production readiness; parallel swarming; recursive repair; QM/OpenClaw adapters; Miskatonic integration; autonomous merge. The reviewer's ACCEPT is evidence, not an `evaluation.v0.1`.
+
+## R1 addendum (WO-SOVEREIGN-SSCM-01A-R1)
+
+The live run above is retained unchanged as historical evidence; its credential scan was CLEAN in that actual run
+and its revisions were full 40-hex ids that also satisfy the stricter R1 comparison. Independent review of the
+v0.1 code found three generic fail-open semantics, repaired in
+[`WO-SOVEREIGN-SSCM-01A-R1-REPORT.md`](WO-SOVEREIGN-SSCM-01A-R1-REPORT.md): abbreviated SHA prefixes could
+satisfy revision gates; model-call/usage budgets were declared but not charged from observed executor
+consumption; the final credential scan ran after terminal success. No live rerun was performed
+(`LIVE_RERUN = NOT_REQUIRED_SEMANTIC_REPAIR_ONLY`); the repaired parsers were replayed offline against this
+run's retained provider logs (coordinator 2 turns / 20.112 kilotokens / USD 0.4416; reviewer 6 turns /
+66.601 kilotokens / USD 0.3005; Codex 1 turn / 85.31 kilotokens).

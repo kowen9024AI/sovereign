@@ -24,9 +24,14 @@ class CredentialMaterialSuspected(ValueError):
         self.pattern = pattern
 
 
-# Keys that legitimately contain the word "token" as a *count*, never a value.
-_KEY_ALLOWLIST = frozenset({"max_token_or_cost_units", "token_or_cost_units", "input_tokens", "output_tokens",
-                            "cache_creation_input_tokens", "cache_read_input_tokens", "total_tokens", "tokens_used"})
+# Keys that legitimately contain the word "token" as a *count*, never a value: ``*_tokens``, ``*token_units``,
+# the budget dimension names. Values under these keys are still pattern-scanned like any other string.
+_KEY_ALLOWLIST = frozenset({"max_token_or_cost_units", "token_or_cost_units", "observed_cost_or_token_units", "token_units"})
+_COUNT_KEY_RE = re.compile(r"^(.*_)?tokens(_incl_cached|_used)?$|^(.*_)?token_units$")
+
+
+def _key_is_count(key: str) -> bool:
+    return key in _KEY_ALLOWLIST or bool(_COUNT_KEY_RE.match(key))
 
 
 def scan_value(text: str, where: str) -> None:
@@ -41,7 +46,7 @@ def scan_json(node: Any, where: str = "$") -> None:
         for k, v in node.items():
             key = str(k)
             low = key.lower()
-            if key not in _KEY_ALLOWLIST and low != "credential_material_present":
+            if not _key_is_count(key) and low != "credential_material_present":
                 for frag in FORBIDDEN_KEY_FRAGMENTS:
                     if frag in low:
                         raise CredentialMaterialSuspected(f"{where}.{key}", f"forbidden key fragment '{frag}'")
