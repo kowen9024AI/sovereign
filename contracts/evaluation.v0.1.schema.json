@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sovereign.local/contracts/evaluation.v0.1.schema.json",
+  "title": "Sovereign Evaluation v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "evaluation_id",
+    "candidate_ref",
+    "evaluator",
+    "disposition",
+    "evidence_refs",
+    "evaluated_at",
+    "authority"
+  ],
+  "properties": {
+    "schema_version": {"const": "sovereign.evaluation.v0.1"},
+    "evaluation_id": {"type": "string", "minLength": 1},
+    "candidate_ref": {"type": "string", "minLength": 1},
+    "evaluator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evaluator_id", "independence_class"],
+      "properties": {
+        "evaluator_id": {"type": "string", "minLength": 1},
+        "independence_class": {"enum": ["INDEPENDENT", "PARTIALLY_INDEPENDENT", "SAME_RUNTIME", "UNKNOWN"]}
+      }
+    },
+    "disposition": {"enum": ["PASS", "FAIL", "BLOCKED", "INCONCLUSIVE"]},
+    "findings": {"type": "array", "items": {"type": "string"}, "default": []},
+    "evidence_refs": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "evaluated_at": {"type": "string", "format": "date-time"},
+    "authority": {"const": "NONE"}
+  }
+}
