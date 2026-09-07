@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sovereign.local/contracts/promotion.v0.1.schema.json",
+  "title": "Sovereign Promotion v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "promotion_id",
+    "candidate_ref",
+    "evaluation_refs",
+    "target_class",
+    "decision",
+    "decider",
+    "decided_at",
+    "authority"
+  ],
+  "properties": {
+    "schema_version": {"const": "sovereign.promotion.v0.1"},
+    "promotion_id": {"type": "string", "minLength": 1},
+    "candidate_ref": {"type": "string", "minLength": 1},
+    "evaluation_refs": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "target_class": {"enum": ["WORKING_KNOWLEDGE", "PROCEDURE", "CANONICAL_KNOWLEDGE_PROPOSAL", "TRAINING_ARTIFACT"]},
+    "decision": {"enum": ["ACCEPTED", "REJECTED", "DEFERRED"]},
+    "decider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decider_id", "authority_source"],
+      "properties": {
+        "decider_id": {"type": "string", "minLength": 1},
+        "authority_source": {"type": "string", "minLength": 1}
+      }
+    },
+    "result_ref": {"type": ["string", "null"]},
+    "rationale": {"type": "string"},
+    "decided_at": {"type": "string", "format": "date-time"},
+    "authority": {"enum": ["EXTERNAL", "HUMAN", "GOVERNED"]}
+  }
+}
