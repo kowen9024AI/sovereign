@@ -1,0 +1,125 @@
+{
+  "budget": {
+    "max_active_actors": 2,
+    "max_consecutive_failures": 1,
+    "max_coordination_transitions": 12,
+    "max_model_calls": 48,
+    "max_repair_loops": 0,
+    "max_token_or_cost_units": 800.0,
+    "max_turns": 48,
+    "max_wall_seconds": 1800,
+    "required_observable_dimensions": [
+      "executor_turns",
+      "token_units",
+      "wall_seconds"
+    ]
+  },
+  "coordination_transitions": 7,
+  "distinct_actors": [
+    "actor:coordinator",
+    "actor:reviewer",
+    "actor:worker_a",
+    "actor:worker_b",
+    "host:sscm-mission-controller"
+  ],
+  "event_count": 13,
+  "event_ids_causal": [
+    "evt-821f30d1-eb0b-4acb-b71f-9458ff4874a3",
+    "evt-be458498-9ff5-4807-aa93-2afd243ca754",
+    "evt-ee87b5d4-8d74-4784-9c2c-3e87d3b4d63f",
+    "evt-faf522d0-3ca8-4656-8677-a615602dc7a2",
+    "evt-ff93e230-978e-43d7-a445-f8a92c610521",
+    "evt-2470049c-ca07-4f35-ae06-a3894a19ef35",
+    "evt-3b84d81e-9b0b-4162-9cf7-6d16364533ca",
+    "evt-ce73dbf6-df47-4e71-ae71-cb7fa30958cb",
+    "evt-4c6ecdc3-d35f-4ce1-a5a2-030b36d6a8fb",
+    "evt-3d47f2bb-ac74-486d-bd0f-872acd55eb00",
+    "evt-484bde15-8206-4bf5-b51b-977b8ac315d6",
+    "evt-108921d2-bf2c-47fc-9ba5-1463657c29ee",
+    "evt-588a61ab-1404-40d5-b35d-976d4af6601b"
+  ],
+  "failures_consecutive": 0,
+  "mission_id": "mission-sscm-01b-live-2",
+  "status": "SUCCEEDED",
+  "tasks": {
+    "mission-sscm-01b-live-2": {
+      "blocker_code": null,
+      "candidate_revision": "916826117fcd3cdf729966ebf7db5c063ed65583",
+      "claimed_by": null,
+      "event_count": 1,
+      "executor_ref": null,
+      "last_event_id": "evt-588a61ab-1404-40d5-b35d-976d4af6601b",
+      "last_verb": "COMPLETE",
+      "status": "SUCCEEDED",
+      "task_id": "mission-sscm-01b-live-2",
+      "workspace_ref": null
+    },
+    "task:fanin": {
+      "blocker_code": null,
+      "candidate_revision": "916826117fcd3cdf729966ebf7db5c063ed65583",
+      "claimed_by": null,
+      "event_count": 2,
+      "executor_ref": null,
+      "last_event_id": "evt-4c6ecdc3-d35f-4ce1-a5a2-030b36d6a8fb",
+      "last_verb": "OBSERVE",
+      "status": "SUCCEEDED",
+      "task_id": "task:fanin",
+      "workspace_ref": null
+    },
+    "task:fanout-a": {
+      "blocker_code": null,
+      "candidate_revision": "7531f8031097dcec47100da161809eede33d763c",
+      "claimed_by": "actor:worker_a",
+      "event_count": 3,
+      "executor_ref": "executor:codex",
+      "last_event_id": "evt-3b84d81e-9b0b-4162-9cf7-6d16364533ca",
+      "last_verb": "OBSERVE",
+      "status": "SUCCEEDED",
+      "task_id": "task:fanout-a",
+      "workspace_ref": "/home/kowen9024/sovereign/.sovereign/runs/mission-sscm-01b-live-2/workspaces/worker-a-wt"
+    },
+    "task:fanout-b": {
+      "blocker_code": null,
+      "candidate_revision": "6a8c1a21f45c8e1a827fe64adc88ee051597c4aa",
+      "claimed_by": "actor:worker_b",
+      "event_count": 3,
+      "executor_ref": "executor:codex",
+      "last_event_id": "evt-2470049c-ca07-4f35-ae06-a3894a19ef35",
+      "last_verb": "OBSERVE",
+      "status": "SUCCEEDED",
+      "task_id": "task:fanout-b",
+      "workspace_ref": "/home/kowen9024/sovereign/.sovereign/runs/mission-sscm-01b-live-2/workspaces/worker-b-wt"
+    },
+    "task:fanout-plan": {
+      "blocker_code": null,
+      "candidate_revision": null,
+      "claimed_by": null,
+      "event_count": 1,
+      "executor_ref": null,
+      "last_event_id": "evt-821f30d1-eb0b-4acb-b71f-9458ff4874a3",
+      "last_verb": "PUBLISH",
+      "status": "SUCCEEDED",
+      "task_id": "task:fanout-plan",
+      "workspace_ref": null
+    },
+    "task:review": {
+      "blocker_code": null,
+      "candidate_revision": "916826117fcd3cdf729966ebf7db5c063ed65583",
+      "claimed_by": "actor:reviewer",
+      "event_count": 3,
+      "executor_ref": "executor:claude-code",
+      "last_event_id": "evt-108921d2-bf2c-47fc-9ba5-1463657c29ee",
+      "last_verb": "OBSERVE",
+      "status": "SUCCEEDED",
+      "task_id": "task:review",
+      "workspace_ref": "/home/kowen9024/sovereign/.sovereign/runs/mission-sscm-01b-live-2/workspaces/reviewer-wt"
+    }
+  },
+  "terminal_event_id": "evt-588a61ab-1404-40d5-b35d-976d4af6601b",
+  "verbs": {
+    "CLAIM": 3,
+    "COMPLETE": 4,
+    "OBSERVE": 5,
+    "PUBLISH": 1
+  }
+}

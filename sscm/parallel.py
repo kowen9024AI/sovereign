@@ -81,11 +81,12 @@ class ParallelDogfoodSpec(DogfoodSpec):
         "COORDINATOR": RunEnvelope(6, 60.0, 600.0),
         "WORKER_A": RunEnvelope(10, 200.0, 900.0),
         "WORKER_B": RunEnvelope(10, 200.0, 900.0),
-        "REVIEWER": RunEnvelope(12, 120.0, 900.0),
+        # Live 01B run 1 measured a two-file+receipt review at 133.5 kilotokens (10 turns); the envelope is sized above that.
+        "REVIEWER": RunEnvelope(16, 300.0, 900.0),
     })
     budget: MissionBudget = field(default_factory=lambda: MissionBudget(
-        max_active_actors=2, max_coordination_transitions=12, max_turns=40, max_model_calls=40,
-        max_wall_seconds=1800, max_repair_loops=0, max_consecutive_failures=1, max_token_or_cost_units=600.0,
+        max_active_actors=2, max_coordination_transitions=12, max_turns=48, max_model_calls=48,
+        max_wall_seconds=1800, max_repair_loops=0, max_consecutive_failures=1, max_token_or_cost_units=800.0,
         required_observable_dimensions=("executor_turns", "token_units", "wall_seconds")))
     barrier_timeout_seconds: float = 30.0
 

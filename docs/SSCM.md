@@ -172,7 +172,7 @@ Every mission carries a frozen budget. v0.1 dimensions and their exact semantics
 | `max_wall_seconds` | cumulative real mission wall time | host clock, checked before every launch |
 | `max_repair_loops` | RETRY events | coordination projection |
 | `max_consecutive_failures` | consecutive failures before a new CLAIM/RETRY is refused | coordination projection |
-| `max_token_or_cost_units` | normalized usage units = kilotokens (all input incl. cached + output) / 1000 | `ExecutorRun.token_units`; monetary cost is evidence only |
+| `max_token_or_cost_units` (v0.1) / `max_usage_units` (v0.2) | normalized usage units = kilotokens (all input incl. cached + output) / 1000 | `ExecutorRun.token_units`; monetary cost is evidence only |
 
 `DECLARED_BUDGET != CONSUMED_BUDGET`: coordination events are not executor usage. Observed consumption is
 appended to a usage ledger on the blackboard after every executor run and enforced cumulatively; the pre-launch
@@ -182,6 +182,21 @@ roster that cannot report one of them (`BUDGET_DIMENSION_UNOBSERVABLE`). Unknown
 never treated as zero, and an executor that claims a dimension but does not report it fails closed
 (`BUDGET_DIMENSION_UNREPORTED`). Budget exhaustion produces a bounded terminal/blocking state. Agents cannot
 grant themselves additional budget or authority.
+
+## Bounded parallel fan-out / fan-in (v0.2, SSCM-01B)
+
+`a2a-collaboration-event.v0.2` carries `predecessor_event_ids` (unique, max 4) so a fan-in join can name every
+lane it depends on; a join is admissible only when all named lanes exist and are SUCCEEDED (`JOIN_INCOMPLETE`,
+`JOIN_BLOCKED` otherwise). Causal depth is max(parent depths) + 1. Each concurrent worker gets its own bare
+mirror and worktree (no shared writable object store); waves are admitted only when their combined host-frozen
+reservations fit the remaining budget, and settled against observed usage. Fan-in is host-owned Git
+(exact-SHA import into bounded refs, cherry-pick in frozen task-id order, `FANIN_CONFLICT` aborts without any
+model). Live proof: [`work-orders/WO-SOVEREIGN-SSCM-01B-REPORT.md`](work-orders/WO-SOVEREIGN-SSCM-01B-REPORT.md).
+
+```bash
+python3 -m sscm.local_cli dogfood-parallel --executors mock --base $(git rev-parse HEAD)   # offline
+python3 -m sscm.local_cli dogfood-parallel --executors live --base <canonical-sha>         # Claude + 2x Codex + Claude
+```
 
 ## Revision authority
 

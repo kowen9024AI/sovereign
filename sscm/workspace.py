@@ -252,6 +252,11 @@ class MissionWorkspaces(RepoLane):
 
     def destroy(self) -> dict[str, Any]:
         removed: list[str] = []
+        # discover lanes on disk too, so a fresh manager (e.g. after restart) still detaches every worktree
+        for mirror in sorted(self.root.glob("*.git")) if self.root.exists() else []:
+            name = mirror.name[:-4]
+            if name != "mirror" and name not in self.lanes:
+                self.lanes[name] = RepoLane(self.root, self.canonical, mirror.name)
         for lane in [self, *self.lanes.values()]:
             if lane.mirror.exists():
                 for line in git(["worktree", "list", "--porcelain"], cwd=lane.mirror, check=False).splitlines():

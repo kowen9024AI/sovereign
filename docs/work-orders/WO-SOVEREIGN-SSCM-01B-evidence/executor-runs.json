@@ -1,0 +1,70 @@
+{
+  "COORDINATOR": {
+    "authority": "NONE",
+    "executor_id": "executor:claude-code",
+    "exit_code": 0,
+    "finished_at": 1788757523.1249194,
+    "run_id": "run:coordinator-71b79c9b-ccb1-4ccf-b41d-07f2b699ff80",
+    "session_ref": "20e294f7-9778-4cf3-9ad9-50087b427b82",
+    "started_at": 1788757503.8838477,
+    "usage": {
+      "cost_units": 0.46839400000000003,
+      "executor_turns": 2,
+      "model_calls": 2,
+      "token_units": 20.949,
+      "wall_seconds": 19.241
+    },
+    "wall_seconds": 19.241
+  },
+  "REVIEWER": {
+    "authority": "NONE",
+    "executor_id": "executor:claude-code",
+    "exit_code": 0,
+    "finished_at": 1788757630.7279985,
+    "run_id": "run:reviewer-a0897107-5d9c-4eea-8734-f92e5234595d",
+    "session_ref": "fb335f31-9cf1-4639-b3d1-62acc47ddaed",
+    "started_at": 1788757563.4343643,
+    "usage": {
+      "cost_units": 0.323901,
+      "executor_turns": 9,
+      "model_calls": 9,
+      "token_units": 110.996,
+      "wall_seconds": 67.294
+    },
+    "wall_seconds": 67.294
+  },
+  "WORKER_A": {
+    "authority": "NONE",
+    "executor_id": "executor:codex",
+    "exit_code": 0,
+    "finished_at": 1788757560.5850992,
+    "run_id": "run:worker_a-c63aa665-f009-49d2-94ad-13751ebe4a6c",
+    "session_ref": "codex-thread:01a07a41-c199-71f3-9225-e49f4589aa6b",
+    "started_at": 1788757524.0166378,
+    "usage": {
+      "cost_units": null,
+      "executor_turns": 1,
+      "model_calls": null,
+      "token_units": 105.464,
+      "wall_seconds": 36.568
+    },
+    "wall_seconds": 36.568
+  },
+  "WORKER_B": {
+    "authority": "NONE",
+    "executor_id": "executor:codex",
+    "exit_code": 0,
+    "finished_at": 1788757562.343043,
+    "run_id": "run:worker_b-89b7eef2-8ed7-46ae-a91e-b3d6eb63e09e",
+    "session_ref": "codex-thread:01a07a41-c143-7f43-b658-49cb17a71085",
+    "started_at": 1788757524.0164523,
+    "usage": {
+      "cost_units": null,
+      "executor_turns": 1,
+      "model_calls": null,
+      "token_units": 105.103,
+      "wall_seconds": 38.327
+    },
+    "wall_seconds": 38.327
+  }
+}
