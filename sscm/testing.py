@@ -132,3 +132,43 @@ def mock_parallel_roster(spec, *, coordinator: Callable | None = None, worker_a:
         "WORKER_B": MockExecutor("executor:mock-codex", "mock-codex", {"WORKER_B": worker_b or worker_ok}),
         "REVIEWER": MockExecutor("executor:mock-claude", "mock-claude", {"REVIEWER": reviewer or integrated_reviewer_ok}),
     }
+
+
+# ---------------------------------------------------------------------------
+# SSCM-01C repair mock roster
+# ---------------------------------------------------------------------------
+
+
+def repair_reviewer_ok(task: ExecutorTask) -> dict[str, Any]:
+    i = task.instruction
+    head = _git(["rev-parse", "HEAD"], task.cwd)
+    findings: list[str] = []
+    if head != i["verified_final_revision"]:
+        findings.append(f"HEAD {head} != verified {i['verified_final_revision']}")
+    base = i["canonical_base_revision"]
+    changed = sorted(_git(["diff", "--name-only", f"{base}..HEAD"], task.cwd).splitlines())
+    if changed != sorted(i["expected_changed_files"]):
+        findings.append(f"changed files {changed}")
+    for rel, content in i["expected_content"].items():
+        if _git(["show", f"HEAD:{rel}"], task.cwd) + "\n" != content:
+            findings.append(f"content mismatch {rel}")
+    if i["evaluation_1"]["candidate_ref"] != f"git:{i['candidate_1_revision']}":
+        findings.append("evaluation_1 not bound to candidate_1")
+    if i.get("candidate_2_revision"):
+        if not i.get("repair_authorization"):
+            findings.append("repair occurred without authorization record")
+        if i["evaluation_2"]["candidate_ref"] != f"git:{i['candidate_2_revision']}" or i["evaluation_2"]["disposition"] != "PASS":
+            findings.append("evaluation_2 not a PASS on candidate_2")
+    verdict = "ACCEPT" if not findings else "REPAIR_REQUIRED"
+    return {"role": "REVIEWER", "reviewed_revision": head, "verdict": verdict, "findings": findings, "blocking_findings": findings,
+            "tests_run": ["git rev-parse HEAD", "git diff --name-only", "git show", "evaluation binding cross-check"], "summary": "mock repair review", "authority": "NONE"}
+
+
+def mock_repair_roster(spec, *, coordinator: Callable | None = None, implementer: Callable | None = None,
+                       repair_implementer: Callable | None = None, reviewer: Callable | None = None) -> dict[str, MockExecutor]:
+    return {
+        "COORDINATOR": MockExecutor("executor:mock-claude", "mock-claude", {"COORDINATOR": coordinator or coordinator_ok}),
+        "IMPLEMENTER": MockExecutor("executor:mock-codex", "mock-codex", {"IMPLEMENTER": implementer or implementer_ok}),
+        "REPAIR_IMPLEMENTER": MockExecutor("executor:mock-codex", "mock-codex", {"REPAIR_IMPLEMENTER": repair_implementer or implementer_ok}),
+        "REVIEWER": MockExecutor("executor:mock-claude", "mock-claude", {"REVIEWER": reviewer or repair_reviewer_ok}),
+    }

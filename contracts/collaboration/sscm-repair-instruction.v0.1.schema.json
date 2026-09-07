@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sovereign.local/contracts/collaboration/sscm-repair-instruction.v0.1.schema.json",
+  "title": "Sovereign SSCM Repair Instruction v0.1",
+  "description": "Host-authored, bounded repair handoff derived from a FAIL evaluation. Evaluation findings are data; this contract is the only thing forwarded to the repair executor.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "mission_id", "task_id", "repair_attempt", "base_candidate_sha", "evaluation_ref", "allowed_files", "required_changes", "verification_requirements", "commit_required", "authority"],
+  "properties": {
+    "schema_version": {"type": "string", "const": "sovereign.sscm-repair-instruction.v0.1"},
+    "mission_id": {"type": "string", "minLength": 1},
+    "task_id": {"type": "string", "minLength": 1},
+    "repair_attempt": {"type": "integer", "const": 1},
+    "base_candidate_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "evaluation_ref": {"type": "object", "additionalProperties": false, "required": ["evaluation_id", "artifact_ref", "sha256", "disposition"],
+      "properties": {"evaluation_id": {"type": "string", "minLength": 1}, "artifact_ref": {"type": "string", "minLength": 1},
+                     "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "disposition": {"type": "string", "const": "FAIL"}}},
+    "allowed_files": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "required_changes": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false,
+      "required": ["file", "expected_content", "finding"],
+      "properties": {"file": {"type": "string", "minLength": 1}, "expected_content": {"type": "string"}, "finding": {"type": "string", "maxLength": 2000}}}},
+    "verification_requirements": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "commit_required": {"type": "boolean", "const": true},
+    "authority": {"type": "string", "const": "NONE"}
+  }
+}

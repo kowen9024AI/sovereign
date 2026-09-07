@@ -68,6 +68,28 @@ def cmd_dogfood_parallel(args: argparse.Namespace) -> int:
     return 0 if report.get("disposition") == "SOVEREIGN_SSCM_PARALLEL_FANOUT_FANIN_QUALIFIED" else 1
 
 
+def cmd_dogfood_repair(args: argparse.Namespace) -> int:
+    from evaluation import HoldoutEvaluator
+    from .repair import RepairDogfoodSpec, RepairMissionController
+    from .testing import mock_repair_roster
+
+    canonical = Path(args.canonical or REPO_ROOT).resolve()
+    base = args.base or git(["rev-parse", "HEAD"], cwd=canonical)
+    spec = RepairDogfoodSpec(canonical_checkout=canonical, base_sha=base, executor_timeout_seconds=args.timeout)
+    if args.executors == "live":
+        codex = CodexExecutor()
+        executors = {"COORDINATOR": ClaudeCodeExecutor(), "IMPLEMENTER": codex, "REPAIR_IMPLEMENTER": codex, "REVIEWER": ClaudeCodeExecutor()}
+    else:
+        executors = mock_repair_roster(spec)
+    ctl = RepairMissionController(spec, executors, HoldoutEvaluator(spec.profile()), mission_id=args.mission_id)
+    report = ctl.execute(cleanup=not args.keep)
+    summary = {k: report.get(k) for k in ("mission_id", "disposition", "mission_terminal_status", "blockers", "run_dir")}
+    summary["evaluations"] = [(e["attempt"], e["disposition"]) for e in report.get("repair", {}).get("evaluations", [])]
+    summary["repair_projection"] = {k: v for k, v in report.get("repair", {}).get("projection", {}).items() if k != "evaluation_history"}
+    print(json.dumps(summary, indent=1))
+    return 0 if report.get("disposition") == "SOVEREIGN_SSCM_BOUNDED_REPAIR_EVALUATION_QUALIFIED" else 1
+
+
 def cmd_report(args: argparse.Namespace) -> int:
     p = REPO_ROOT / ".sovereign" / "runs" / args.mission_id / "report.json"
     print(p.read_text())
@@ -91,6 +113,11 @@ def main(argv: list[str] | None = None) -> int:
                   ("--timeout", {"type": int, "default": 900}), ("--mission-id", {}), ("--keep", {"action": "store_true"})):
         dp.add_argument(a, **kw)
     dp.set_defaults(fn=cmd_dogfood_parallel)
+    dr = sub.add_parser("dogfood-repair", help="SSCM-01C single bounded repair loop with independent evaluation")
+    for a, kw in (("--base", {}), ("--canonical", {}), ("--executors", {"choices": ["live", "mock"], "default": "live"}),
+                  ("--timeout", {"type": int, "default": 900}), ("--mission-id", {}), ("--keep", {"action": "store_true"})):
+        dr.add_argument(a, **kw)
+    dr.set_defaults(fn=cmd_dogfood_repair)
     r = sub.add_parser("report")
     r.add_argument("mission_id")
     r.set_defaults(fn=cmd_report)

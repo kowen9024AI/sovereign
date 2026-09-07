@@ -179,7 +179,7 @@ ALLOWED_PREDECESSORS: dict[str, frozenset[str | None]] = {
     "CLAIM": frozenset({"PUBLISH", "OBSERVE", "RETRY"}),
     "COMPLETE": frozenset({"CLAIM", "OBSERVE", "COMPLETE"}),
     "OBSERVE": frozenset({"PUBLISH", "CLAIM", "COMPLETE", "OBSERVE"}),
-    "REJECT": frozenset({None, "PUBLISH", "CLAIM", "COMPLETE", "OBSERVE", "REJECT"}),
+    "REJECT": frozenset({None, "PUBLISH", "CLAIM", "COMPLETE", "OBSERVE", "REJECT", "RETRY"}),
     "RETRY": frozenset({"REJECT", "COMPLETE"}),
     "CANCEL": frozenset({None, "PUBLISH", "CLAIM", "COMPLETE", "OBSERVE", "REJECT", "RETRY"}),
 }
@@ -349,6 +349,8 @@ def project(mission_id: str, budget: Mapping[str, Any], events: Iterable[Mapping
             t.claimed_by = e["actor_ref"]
             t.executor_ref = e.get("executor_ref")
             t.workspace_ref = e.get("workspace_ref")
+        if e["verb"] == "RETRY":  # host re-opened the task: prior claimant no longer holds it
+            t.claimed_by = None
         if e["verb"] in ("CLAIM", "COMPLETE"):
             proj.coordination_transitions += 1
         if e["status"] == "FAILED" or e["verb"] == "REJECT":
@@ -540,6 +542,9 @@ class Blackboard:
                     "INSERT INTO claims(mission_id, task_id, actor_ref, event_id) VALUES (?,?,?,?)",
                     (payload["mission_id"], payload["task_id"], payload["actor_ref"], payload["event_id"]),
                 )
+            if payload["verb"] == "RETRY":
+                # a host RETRY re-opens the task for a fresh claimant; the prior custody stays in the event history
+                c.execute("DELETE FROM claims WHERE mission_id=? AND task_id=?", (payload["mission_id"], payload["task_id"]))
 
             # a mission-level SUCCEEDED completion needs host observation and no task still active
             if payload["task_id"] == payload["mission_id"] and payload["verb"] == "COMPLETE" and payload["status"] == "SUCCEEDED":
@@ -548,6 +553,14 @@ class Blackboard:
                 active = [t.task_id for t in proj.tasks.values() if t.task_id != payload["mission_id"] and t.status in ("ACTIVE", "PENDING")]
                 if active:
                     raise BlackboardError("MISSION_COMPLETE_WITH_ACTIVE_TASKS", ",".join(sorted(active)))
+                # the mission spec may name tasks that must have been host-verified SUCCEEDED before success
+                # (e.g. task:review): an evaluation PASS alone can never terminal-succeed a mission
+                spec = json.loads(c.execute("SELECT spec_json FROM missions WHERE mission_id=?", (payload["mission_id"],)).fetchone()["spec_json"])
+                for required in spec.get("required_terminal_tasks", []):
+                    t = proj.tasks.get(required)
+                    if t is None or t.status != "SUCCEEDED" or t.last_verb != "OBSERVE":
+                        raise BlackboardError("FINAL_REVIEW_REQUIRED" if "review" in required else "REQUIRED_TASK_UNVERIFIED",
+                                              f"mission COMPLETE requires host-verified SUCCEEDED task {required}")
 
             c.execute(
                 """INSERT INTO events(event_id, mission_id, task_id, predecessor_event_id, verb, actor_ref,
