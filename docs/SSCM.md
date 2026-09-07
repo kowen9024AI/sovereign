@@ -187,7 +187,12 @@ grant themselves additional budget or authority.
 
 `a2a-collaboration-event.v0.2` carries `predecessor_event_ids` (unique, max 4) so a fan-in join can name every
 lane it depends on; a join is admissible only when all named lanes exist and are SUCCEEDED (`JOIN_INCOMPLETE`,
-`JOIN_BLOCKED` otherwise). Causal depth is max(parent depths) + 1. Each concurrent worker gets its own bare
+`JOIN_BLOCKED` otherwise). Causal depth is max(parent depths) + 1. A join parent must be a host-owned `OBSERVE` (actor `host:*`) that is
+SUCCEEDED and binds a full 40-hex candidate revision, and the join must reference exactly those revisions
+(`JOIN_PREDECESSOR_UNVERIFIED`, `JOIN_REVISION_MISMATCH`): a worker's own SUCCEEDED COMPLETE never earns join
+eligibility. Every qualified role must surface a provider/runtime session identity; worker sessions must be
+non-null and distinct, reviewer and coordinator sessions must differ, and executed usage is settled before any
+identity gate can block. Each concurrent worker gets its own bare
 mirror and worktree (no shared writable object store); waves are admitted only when their combined host-frozen
 reservations fit the remaining budget, and settled against observed usage. Fan-in is host-owned Git
 (exact-SHA import into bounded refs, cherry-pick in frozen task-id order, `FANIN_CONFLICT` aborts without any

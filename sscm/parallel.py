@@ -191,6 +191,23 @@ class ParallelMissionController(MissionController):
                 results[role] = run
         return results
 
+    # -- session / run identity custody (01B-R1 Part A) -----------------------------------------
+
+    @staticmethod
+    def _require_session(role: str, run: ExecutorRun) -> str:
+        """A required role must carry a non-empty provider/runtime session identity. No synthetic fallback."""
+        if not run.session_ref or not str(run.session_ref).strip():
+            raise MissionAborted("SESSION_IDENTITY_MISSING", f"{role} run {run.run_id} returned no session identity", DISPOSITION_PARALLEL_BLOCKED)
+        return str(run.session_ref)
+
+    def _record_identity(self, role: str, run: ExecutorRun) -> None:
+        ids = self.report["parallel"].setdefault("identity", {"run_ids": {}, "session_refs": {}})
+        ids["run_ids"][role] = run.run_id
+        ids["session_refs"][role] = run.session_ref
+        seen = [r for r, rid in ids["run_ids"].items() if rid == run.run_id and r != role]
+        if seen:
+            raise MissionAborted("RUN_ID_COLLISION", f"{role} run id equals {seen[0]}", DISPOSITION_PARALLEL_BLOCKED)
+
     # -- the frozen DAG ------------------------------------------------------------------------
 
     def execute(self, cleanup: bool = True) -> dict[str, Any]:
@@ -240,6 +257,10 @@ class ParallelMissionController(MissionController):
             for dim in self.spec.budget.required_observable_dimensions:
                 if obs.get(dim) != "OBSERVABLE":
                     raise MissionAborted("BUDGET_DIMENSION_UNOBSERVABLE", f"{role} cannot report {dim}")
+            # 01B-R1 Part A: every role's distinctness is qualified by provider/runtime session identity, so the
+            # executor must be able to surface one. PID, order, family, cwd or prompt are never a substitute.
+            if not c.get("session_identity_support"):
+                raise MissionAborted("SESSION_IDENTITY_UNOBSERVABLE", f"{role} executor {c['executor_id']} cannot surface a per-run session identity")
         for w in ("WORKER_A", "WORKER_B"):
             if caps[w]["runtime_family"] == caps["REVIEWER"]["runtime_family"]:
                 raise MissionAborted("RUNTIME_NOT_DISTINCT", f"{w} and REVIEWER share a runtime family")
@@ -267,7 +288,9 @@ class ParallelMissionController(MissionController):
             result = self.executors["COORDINATOR"].run(task)
         finally:
             shutil.rmtree(neutral, ignore_errors=True)
-        self._settle("COORDINATOR", result)
+        self._settle("COORDINATOR", result)           # executed usage is evidence before any other gate
+        self._record_identity("COORDINATOR", result)
+        self._require_session("COORDINATOR", result)
         plan = self._validate_result("COORDINATOR", result, FANOUT_PLAN_SCHEMA, "COORDINATOR_RESULT_INVALID")
         if plan["mission_id"] != self.mission_id:
             raise MissionAborted("COORDINATOR_RESULT_INVALID", "mission identity mismatch")
@@ -340,55 +363,85 @@ class ParallelMissionController(MissionController):
             "worker_a_run_id": a.run_id, "worker_b_run_id": b.run_id,
             "worker_a_session_ref": a.session_ref, "worker_b_session_ref": b.session_ref,
         }
-        if a.session_ref and a.session_ref == b.session_ref:
-            raise MissionAborted("SESSION_COLLAPSE", "both workers report the same session")
         return runs
 
     def _verify_workers(self, lanes, claims, runs) -> dict[str, dict[str, Any]]:
-        observes: dict[str, dict[str, Any]] = {}
+        """Evidence-first post-wave ordering (01B-R1 Part B):
+
+        receipts + usage settlement for BOTH lanes -> session identity gates -> structured results -> host
+        verification. A model run that happened always leaves a usage row before any identity or result gate
+        can block the mission.
+        """
         failures: list[str] = []
-        for role in ("WORKER_A", "WORKER_B"):  # frozen order; completion timing is irrelevant
-            info, run, claim = lanes[role], runs[role], claims[role]
-            t = info["task"]
-            self._settle_or_note(role, run, failures)
-            result, status, claimed = None, "FAILED", None
-            try:
-                result = self._validate_result(role, run, IMPLEMENTER_SCHEMA, f"{role}_RESULT_INVALID")
-                status = "SUCCEEDED" if result["status"] == "SUCCEEDED" else "FAILED"
-                claimed = result.get("claimed_candidate_revision")
-            except MissionAborted as ex:
-                failures.append(f"{role}:{ex.blocker_code}")
-                self.report["blockers"].append({"stage": role, "code": ex.blocker_code, "detail": ex.detail})
-            result_ref = self.run.write_json(f"artifacts/{role.lower()}-result.json", result if result is not None else {"unparsed": True, "exit_code": run.exit_code, "error": run.error})
-            complete = self._append(task_id=t.task_id, verb="COMPLETE", actor_ref=f"actor:{role.lower()}", executor_ref=run.executor_id, session_ref=run.session_ref,
-                                    workspace_ref=claim["workspace_ref"], base_revision=self.spec.base_sha, candidate_revision=claimed,
-                                    output_refs=[result_ref, self.report["runs"][role]["receipt"]], status=status,
-                                    predecessor_event_ids=[claim["event_id"]], blocker_code=None if status == "SUCCEEDED" else f"{role}_FAILED")
-            if status != "SUCCEEDED":
-                failures.append(f"{role}:FAILED")
-                continue
-            try:
-                verification = info["lane"].verify_candidate(info["worktree"], self.spec.base_sha, {t.target_file: t.expected_content})
-            except WorkspaceError as ex:
-                failures.append(f"{role}:{ex.code}")
-                self.report["blockers"].append({"stage": role, "code": ex.code, "detail": ex.detail})
-                self._append(task_id=t.task_id, verb="REJECT", actor_ref=HOST_ACTOR, status="FAILED", blocker_code=ex.code, predecessor_event_ids=[complete["event_id"]])
-                continue
-            verified = verification["verified_candidate_revision"]
-            if claimed is not None and claimed != verified:
-                failures.append(f"{role}:CANDIDATE_CLAIM_MISMATCH")
-                self.report["blockers"].append({"stage": role, "code": "CANDIDATE_CLAIM_MISMATCH", "detail": f"claimed {claimed}, host {verified}"})
-                self._append(task_id=t.task_id, verb="REJECT", actor_ref=HOST_ACTOR, status="FAILED", blocker_code="CANDIDATE_CLAIM_MISMATCH", predecessor_event_ids=[complete["event_id"]])
-                continue
-            verification["claimed_candidate_revision"] = claimed
-            ref = self.run.write_json(f"artifacts/host-verification-{role.lower()}.json", verification)
-            self.report["parallel"][f"verified_{role.lower()}"] = verification
-            observes[role] = self._append(task_id=t.task_id, verb="OBSERVE", actor_ref=HOST_ACTOR, workspace_ref=claim["workspace_ref"], base_revision=self.spec.base_sha,
-                                          candidate_revision=verified, output_refs=[ref, artifact_ref("REVISION", f"git:{verified}")], status="SUCCEEDED",
-                                          predecessor_event_ids=[complete["event_id"]])
+        # 1. settle every executed lane first (receipts are written inside _settle); a failed settlement is
+        #    recorded and the other lane is still settled.
+        for role in ("WORKER_A", "WORKER_B"):
+            self._settle_or_note(role, runs[role], failures)
+        # 2. identity gates, only now that executed usage is durable
+        for role in ("WORKER_A", "WORKER_B"):
+            self._record_identity(role, runs[role])
+        missing = [role for role in ("WORKER_A", "WORKER_B") if not runs[role].session_ref or not str(runs[role].session_ref).strip()]
+        if missing:
+            self.report["blockers"].append({"stage": "WAVE", "code": "SESSION_IDENTITY_MISSING", "detail": ", ".join(missing)})
+            failures.append("SESSION_IDENTITY_MISSING")
+        elif runs["WORKER_A"].session_ref == runs["WORKER_B"].session_ref:
+            self.report["blockers"].append({"stage": "WAVE", "code": "SESSION_COLLAPSE", "detail": "both workers report the same session identity"})
+            failures.append("SESSION_COLLAPSE")
+        if failures:
+            # record what each lane produced (COMPLETE events) so the evidence graph is complete, then block
+            for role in ("WORKER_A", "WORKER_B"):
+                self._complete_lane(lanes, claims, runs, role, failures, record_only=True)
+            code = "SESSION_IDENTITY_MISSING" if "SESSION_IDENTITY_MISSING" in failures else ("SESSION_COLLAPSE" if "SESSION_COLLAPSE" in failures else "FANOUT_LANE_FAILED")
+            raise MissionAborted(code, "; ".join(failures), DISPOSITION_PARALLEL_BLOCKED)
+        # 3. structured results + host verification, frozen order (completion timing is irrelevant)
+        observes: dict[str, dict[str, Any]] = {}
+        for role in ("WORKER_A", "WORKER_B"):
+            observe = self._complete_lane(lanes, claims, runs, role, failures, record_only=False)
+            if observe is not None:
+                observes[role] = observe
         if failures:
             raise MissionAborted("FANOUT_LANE_FAILED", "; ".join(failures), DISPOSITION_PARALLEL_BLOCKED)
         return observes
+
+    def _complete_lane(self, lanes, claims, runs, role: str, failures: list[str], *, record_only: bool) -> dict[str, Any] | None:
+        info, run, claim = lanes[role], runs[role], claims[role]
+        t = info["task"]
+        result, status, claimed = None, "FAILED", None
+        try:
+            result = self._validate_result(role, run, IMPLEMENTER_SCHEMA, f"{role}_RESULT_INVALID")
+            status = "SUCCEEDED" if result["status"] == "SUCCEEDED" else "FAILED"
+            claimed = result.get("claimed_candidate_revision")
+        except MissionAborted as ex:
+            failures.append(f"{role}:{ex.blocker_code}")
+            self.report["blockers"].append({"stage": role, "code": ex.blocker_code, "detail": ex.detail})
+        result_ref = self.run.write_json(f"artifacts/{role.lower()}-result.json", result if result is not None else {"unparsed": True, "exit_code": run.exit_code, "error": run.error})
+        complete = self._append(task_id=t.task_id, verb="COMPLETE", actor_ref=f"actor:{role.lower()}", executor_ref=run.executor_id, session_ref=run.session_ref,
+                                workspace_ref=claim["workspace_ref"], base_revision=self.spec.base_sha, candidate_revision=claimed,
+                                output_refs=[result_ref, self.report["runs"][role]["receipt"]], status=status,
+                                predecessor_event_ids=[claim["event_id"]], blocker_code=None if status == "SUCCEEDED" else f"{role}_FAILED")
+        if record_only or status != "SUCCEEDED":
+            if status != "SUCCEEDED":
+                failures.append(f"{role}:FAILED")
+            return None
+        try:
+            verification = info["lane"].verify_candidate(info["worktree"], self.spec.base_sha, {t.target_file: t.expected_content})
+        except WorkspaceError as ex:
+            failures.append(f"{role}:{ex.code}")
+            self.report["blockers"].append({"stage": role, "code": ex.code, "detail": ex.detail})
+            self._append(task_id=t.task_id, verb="REJECT", actor_ref=HOST_ACTOR, status="FAILED", blocker_code=ex.code, predecessor_event_ids=[complete["event_id"]])
+            return None
+        verified = verification["verified_candidate_revision"]
+        if claimed is not None and claimed != verified:
+            failures.append(f"{role}:CANDIDATE_CLAIM_MISMATCH")
+            self.report["blockers"].append({"stage": role, "code": "CANDIDATE_CLAIM_MISMATCH", "detail": f"claimed {claimed}, host {verified}"})
+            self._append(task_id=t.task_id, verb="REJECT", actor_ref=HOST_ACTOR, status="FAILED", blocker_code="CANDIDATE_CLAIM_MISMATCH", predecessor_event_ids=[complete["event_id"]])
+            return None
+        verification["claimed_candidate_revision"] = claimed
+        ref = self.run.write_json(f"artifacts/host-verification-{role.lower()}.json", verification)
+        self.report["parallel"][f"verified_{role.lower()}"] = verification
+        return self._append(task_id=t.task_id, verb="OBSERVE", actor_ref=HOST_ACTOR, workspace_ref=claim["workspace_ref"], base_revision=self.spec.base_sha,
+                            candidate_revision=verified, output_refs=[ref, artifact_ref("REVISION", f"git:{verified}")], status="SUCCEEDED",
+                            predecessor_event_ids=[complete["event_id"]])
 
     def _settle_or_note(self, role: str, run: ExecutorRun, failures: list[str]) -> None:
         try:
@@ -482,7 +535,12 @@ class ParallelMissionController(MissionController):
         }
         task = self._task_for("REVIEWER", claim["_run_id"], instruction, REVIEWER_SCHEMA, wt, False, [])
         run = self.executors["REVIEWER"].run(task)
-        self._settle("REVIEWER", run)
+        self._settle("REVIEWER", run)                 # executed usage first
+        self._record_identity("REVIEWER", run)
+        self._require_session("REVIEWER", run)
+        coord_session = self.report["parallel"]["identity"]["session_refs"].get("COORDINATOR")
+        if run.session_ref == coord_session:
+            raise MissionAborted("REVIEW_SESSION_NOT_INDEPENDENT", "reviewer reused the coordinator session", DISPOSITION_PARALLEL_BLOCKED)
         review, status = None, "FAILED"
         try:
             review = self._validate_result("REVIEWER", run, REVIEWER_SCHEMA, "REVIEWER_RESULT_INVALID")

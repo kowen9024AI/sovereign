@@ -94,20 +94,34 @@ def test_budget_names_by_version():
 # -- multi-parent semantics --------------------------------------------------------------------
 
 
-def _fanout(bb, a_status="SUCCEEDED", b_status="SUCCEEDED"):
+SHA_A = "a" * 40
+SHA_B = "b" * 40
+HOST = "host:test-controller"
+
+
+def rev(sha):
+    return {"kind": "REVISION", "ref": f"git:{sha}", "sha256": None}
+
+
+def _fanout(bb, a_status="SUCCEEDED", b_status="SUCCEEDED", a_rev=SHA_A, b_rev=SHA_B):
     p = bb.append(ev2(task="plan"))
     ca = bb.append(ev2(task="a", verb="CLAIM", status="ACTIVE", actor="wa", preds=[p["event_id"]]))
     cb = bb.append(ev2(task="b", verb="CLAIM", status="ACTIVE", actor="wb", preds=[p["event_id"]]))
-    da = bb.append(ev2(task="a", verb="COMPLETE", status="SUCCEEDED", actor="wa", preds=[ca["event_id"]]))
-    db = bb.append(ev2(task="b", verb="COMPLETE", status="SUCCEEDED", actor="wb", preds=[cb["event_id"]]))
-    oa = bb.append(ev2(task="a", verb="OBSERVE", status=a_status, actor="host", preds=[da["event_id"]]))
-    ob = bb.append(ev2(task="b", verb="OBSERVE", status=b_status, actor="host", preds=[db["event_id"]]))
+    da = bb.append(ev2(task="a", verb="COMPLETE", status="SUCCEEDED", actor="wa", preds=[ca["event_id"]], candidate_revision=SHA_A))
+    db = bb.append(ev2(task="b", verb="COMPLETE", status="SUCCEEDED", actor="wb", preds=[cb["event_id"]], candidate_revision=SHA_B))
+    oa = bb.append(ev2(task="a", verb="OBSERVE", status=a_status, actor=HOST, preds=[da["event_id"]], candidate_revision=a_rev))
+    ob = bb.append(ev2(task="b", verb="OBSERVE", status=b_status, actor=HOST, preds=[db["event_id"]], candidate_revision=b_rev))
+    bb._last = {"da": da, "db": db}
     return p, oa, ob
+
+
+def join(bb, preds, revs=(SHA_A, SHA_B), **kw):
+    return bb.append(ev2(task="fanin", verb="OBSERVE", actor=HOST, preds=preds, input_refs=[rev(r) for r in revs], **kw))
 
 
 def test_join_with_two_valid_predecessors_allowed(bb):
     _, oa, ob = _fanout(bb)
-    j = bb.append(ev2(task="fanin", verb="OBSERVE", actor="host", preds=[oa["event_id"], ob["event_id"]]))
+    j = join(bb, [oa["event_id"], ob["event_id"]])
     assert sorted(bb.predecessors_of(j["event_id"])) == sorted([oa["event_id"], ob["event_id"]])
     proj = bb.project("m")
     assert proj.event_ids_causal[-1] == j["event_id"]  # deepest node
@@ -116,14 +130,14 @@ def test_join_with_two_valid_predecessors_allowed(bb):
 def test_join_with_missing_predecessor_is_join_incomplete(bb):
     _, oa, _ = _fanout(bb)
     with pytest.raises(JoinNotReady) as ei:
-        bb.append(ev2(task="fanin", verb="OBSERVE", actor="host", preds=[oa["event_id"], "evt-not-there"]))
+        join(bb, [oa["event_id"], "evt-not-there"])
     assert ei.value.code == "JOIN_INCOMPLETE"
 
 
 def test_join_with_failed_lane_is_join_blocked(bb):
     _, oa, ob = _fanout(bb, b_status="FAILED")
     with pytest.raises(JoinNotReady) as ei:
-        bb.append(ev2(task="fanin", verb="OBSERVE", actor="host", preds=[oa["event_id"], ob["event_id"]]))
+        join(bb, [oa["event_id"], ob["event_id"]])
     assert ei.value.code == "JOIN_BLOCKED"
 
 
@@ -132,13 +146,13 @@ def test_cross_mission_self_duplicate_predecessors_rejected(bb):
     other = bb.append(ev2(mission="m2", task="x"))
     _, oa, ob = _fanout(bb)
     with pytest.raises(PredecessorInvalid) as ei:
-        bb.append(ev2(task="fanin", verb="OBSERVE", actor="host", preds=[oa["event_id"], other["event_id"]]))
+        join(bb, [oa["event_id"], other["event_id"]])
     assert ei.value.code == "PREDECESSOR_CROSS_MISSION"
-    e = ev2(task="fanin", verb="OBSERVE", actor="host", preds=[oa["event_id"]]); e["predecessor_event_ids"].append(e["event_id"])
+    e = ev2(task="fanin", verb="OBSERVE", actor=HOST, preds=[oa["event_id"]]); e["predecessor_event_ids"].append(e["event_id"])
     with pytest.raises(PredecessorInvalid) as ei:
         bb.append(e)
     assert ei.value.code == "PREDECESSOR_SELF"
-    e = ev2(task="fanin", verb="OBSERVE", actor="host", preds=[oa["event_id"]]); e["predecessor_event_ids"] = [oa["event_id"], oa["event_id"]]
+    e = ev2(task="fanin", verb="OBSERVE", actor=HOST, preds=[oa["event_id"]]); e["predecessor_event_ids"] = [oa["event_id"], oa["event_id"]]
     with pytest.raises((PredecessorInvalid, ContractViolation)):
         bb.append(e)
 
@@ -160,10 +174,12 @@ def test_dag_depth_is_max_parent_plus_one_and_order_independent(tmp_path):
         cb = ev2(task="b", verb="CLAIM", status="ACTIVE", actor="wb", preds=["p"], event_id="cb")
         da = ev2(task="a", verb="COMPLETE", actor="wa", preds=["ca"], event_id="da")
         db = ev2(task="b", verb="COMPLETE", actor="wb", preds=["cb"], event_id="db")
-        oa = ev2(task="a", verb="OBSERVE", actor="host", preds=["da"], event_id="oa")
-        # lane b is one step shorter: COMPLETE b is joined directly (depth differs between parents)
-        j = ev2(task="fanin", verb="OBSERVE", actor="host", preds=["oa", "db"], event_id="j")
-        seqs = {0: [p, ca, cb, da, db, oa, j], 1: [p, cb, db, ca, da, oa, j], 2: [p, ca, da, oa, cb, db, j]}
+        oa = ev2(task="a", verb="OBSERVE", actor=HOST, preds=["da"], event_id="oa", candidate_revision=SHA_A)
+        # lane b is verified one step later so parent depths differ
+        ob = ev2(task="b", verb="OBSERVE", actor=HOST, preds=["db"], event_id="ob", candidate_revision=SHA_B)
+        ob2 = ev2(task="b", verb="OBSERVE", actor=HOST, preds=["ob"], event_id="ob2", candidate_revision=SHA_B)
+        j = ev2(task="fanin", verb="OBSERVE", actor=HOST, preds=["oa", "ob2"], event_id="j", input_refs=[rev(SHA_A), rev(SHA_B)])
+        seqs = {0: [p, ca, cb, da, db, oa, ob, ob2, j], 1: [p, cb, db, ob, ob2, ca, da, oa, j], 2: [p, ca, da, oa, cb, db, ob, ob2, j]}
         for e in seqs[order]:
             bb.append(e)
         return bb.project("m").as_dict(), [e["event_id"] for e in bb.events("m", order="stored")]
@@ -171,7 +187,7 @@ def test_dag_depth_is_max_parent_plus_one_and_order_independent(tmp_path):
     assert outs[0][0] == outs[1][0] == outs[2][0]
     assert len({tuple(o[1]) for o in outs}) == 3
     ids = outs[0][0]["event_ids_causal"]
-    assert ids.index("j") > ids.index("oa") and ids.index("j") > ids.index("db")
+    assert ids.index("j") > ids.index("oa") and ids.index("j") > ids.index("ob2")
 
 
 def test_join_order_reversed_projects_identically(tmp_path):
@@ -182,11 +198,13 @@ def test_join_order_reversed_projects_identically(tmp_path):
         if first_b:
             lanes.reverse()
         obs = {}
+        shas = {"a": SHA_A, "b": SHA_B}
         for t, w in lanes:
             c = bb.append(ev2(task=t, verb="CLAIM", status="ACTIVE", actor=w, preds=["p"], event_id=f"c{t}"))
             d = bb.append(ev2(task=t, verb="COMPLETE", actor=w, preds=[f"c{t}"], event_id=f"d{t}"))
-            obs[t] = bb.append(ev2(task=t, verb="OBSERVE", actor="host", preds=[f"d{t}"], event_id=f"o{t}"))
-        bb.append(ev2(task="fanin", verb="OBSERVE", actor="host", preds=[obs["a"]["event_id"], obs["b"]["event_id"]] if not first_b else [obs["b"]["event_id"], obs["a"]["event_id"]], event_id="j"))
+            obs[t] = bb.append(ev2(task=t, verb="OBSERVE", actor=HOST, preds=[f"d{t}"], event_id=f"o{t}", candidate_revision=shas[t]))
+        preds = [obs["a"]["event_id"], obs["b"]["event_id"]] if not first_b else [obs["b"]["event_id"], obs["a"]["event_id"]]
+        bb.append(ev2(task="fanin", verb="OBSERVE", actor=HOST, preds=preds, event_id="j", input_refs=[rev(SHA_A), rev(SHA_B)]))
         return bb.project("m").as_dict()
     assert run(False) == run(True)
 
@@ -203,7 +221,7 @@ def test_v1_and_v2_events_coexist_without_rewriting_v1(bb):
 def test_edge_table_not_comma_string(bb):
     import sqlite3
     _, oa, ob = _fanout(bb)
-    j = bb.append(ev2(task="fanin", verb="OBSERVE", actor="host", preds=[oa["event_id"], ob["event_id"]]))
+    j = join(bb, [oa["event_id"], ob["event_id"]])
     rows = sqlite3.connect(bb.path).execute("SELECT predecessor_event_id FROM event_predecessors WHERE event_id=?", (j["event_id"],)).fetchall()
     assert len(rows) == 2 and all("," not in r[0] for r in rows)
 
@@ -346,3 +364,63 @@ def test_restart_after_partial_fanout_reconstructs(tmp_path):
     proj = again.project("m")
     assert proj.as_dict() == before
     assert proj.tasks["a"].status == "SUCCEEDED" and proj.tasks["b"].status == "ACTIVE" and proj.tasks["b"].claimed_by == "wb"
+
+
+# -- R1 Part C: verified-join admission --------------------------------------------------------------
+
+
+def test_two_raw_complete_parents_rejected_even_when_succeeded(bb):
+    _fanout(bb)
+    da, db = bb._last["da"], bb._last["db"]
+    with pytest.raises(JoinNotReady) as ei:
+        join(bb, [da["event_id"], db["event_id"]])
+    assert ei.value.code == "JOIN_PREDECESSOR_UNVERIFIED"
+
+
+def test_mixed_verified_and_raw_parent_rejected(bb):
+    _, oa, _ = _fanout(bb)
+    db = bb._last["db"]
+    with pytest.raises(JoinNotReady) as ei:
+        join(bb, [oa["event_id"], db["event_id"]])
+    assert ei.value.code == "JOIN_PREDECESSOR_UNVERIFIED"
+
+
+def test_verified_observe_without_revision_rejected(bb):
+    _, oa, ob = _fanout(bb, b_rev=None)
+    with pytest.raises(JoinNotReady) as ei:
+        join(bb, [oa["event_id"], ob["event_id"]])
+    assert ei.value.code == "JOIN_PREDECESSOR_UNVERIFIED"
+
+
+def test_verified_observe_with_short_revision_rejected(bb):
+    _, oa, ob = _fanout(bb, b_rev="b" * 7)
+    with pytest.raises(JoinNotReady) as ei:
+        join(bb, [oa["event_id"], ob["event_id"]])
+    assert ei.value.code == "JOIN_PREDECESSOR_UNVERIFIED"
+
+
+def test_non_host_observe_parent_rejected(bb):
+    p = bb.append(ev2(task="plan"))
+    ca = bb.append(ev2(task="a", verb="CLAIM", status="ACTIVE", actor="wa", preds=[p["event_id"]]))
+    cb = bb.append(ev2(task="b", verb="CLAIM", status="ACTIVE", actor="wb", preds=[p["event_id"]]))
+    oa = bb.append(ev2(task="a", verb="OBSERVE", actor="actor:worker-a", preds=[ca["event_id"]], candidate_revision=SHA_A))  # a model "observing" itself
+    ob = bb.append(ev2(task="b", verb="OBSERVE", actor=HOST, preds=[cb["event_id"]], candidate_revision=SHA_B))
+    with pytest.raises(JoinNotReady) as ei:
+        join(bb, [oa["event_id"], ob["event_id"]])
+    assert ei.value.code == "JOIN_PREDECESSOR_UNVERIFIED"
+
+
+def test_join_must_reference_exactly_the_frozen_revisions(bb):
+    _, oa, ob = _fanout(bb)
+    with pytest.raises(JoinNotReady) as ei:
+        join(bb, [oa["event_id"], ob["event_id"]], revs=(SHA_A, "c" * 40))
+    assert ei.value.code == "JOIN_REVISION_MISMATCH"
+    with pytest.raises(JoinNotReady) as ei:
+        join(bb, [oa["event_id"], ob["event_id"]], revs=(SHA_A,))
+    assert ei.value.code == "JOIN_REVISION_MISMATCH"
+
+
+def test_verified_parents_with_full_shas_allowed(bb):
+    _, oa, ob = _fanout(bb)
+    j = join(bb, [oa["event_id"], ob["event_id"]])
+    assert len(bb.predecessors_of(j["event_id"])) == 2

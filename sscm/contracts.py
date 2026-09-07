@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import uuid
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -23,6 +24,8 @@ EVENT_SCHEMA_VERSION = "sovereign.a2a-collaboration-event.v0.1"
 EVENT_V2_SCHEMA_VERSION = "sovereign.a2a-collaboration-event.v0.2"
 EVENT_SCHEMAS = {EVENT_SCHEMA_VERSION: EVENT_SCHEMA_PATH, EVENT_V2_SCHEMA_VERSION: EVENT_V2_SCHEMA_PATH}
 MAX_PREDECESSORS_PER_EVENT = 4
+HOST_ACTOR_PREFIX = "host:"  # actors that may freeze a verified candidate (mission controller / host git), never a model
+REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
 EXPERIENCE_SCHEMA_VERSION = "sovereign.experience.v0.1"
 
 VERBS = ("CLAIM", "PUBLISH", "OBSERVE", "COMPLETE", "REJECT", "RETRY", "CANCEL")

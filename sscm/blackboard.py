@@ -29,7 +29,9 @@ from typing import Any, Iterable, Mapping
 
 from .contracts import (
     EVENT_V2_SCHEMA_VERSION,
+    HOST_ACTOR_PREFIX,
     MAX_PREDECESSORS_PER_EVENT,
+    REVISION_RE,
     STATUSES,
     VERBS,
     ContractViolation,
@@ -501,7 +503,7 @@ class Blackboard:
                     raise JoinNotReady("JOIN_INCOMPLETE", f"join lanes missing: {','.join(missing)}")
                 raise PredecessorInvalid("PREDECESSOR_MISSING", missing[0])
             for pred_id in preds:
-                pred = c.execute("SELECT mission_id, verb, status FROM events WHERE event_id=?", (pred_id,)).fetchone()
+                pred = c.execute("SELECT mission_id, verb, status, actor_ref, candidate_revision FROM events WHERE event_id=?", (pred_id,)).fetchone()
                 if pred["mission_id"] != payload["mission_id"]:
                     raise PredecessorInvalid("PREDECESSOR_CROSS_MISSION", pred_id)
                 if pred["verb"] not in ALLOWED_PREDECESSORS[payload["verb"]]:
@@ -510,10 +512,7 @@ class Blackboard:
             if not preds and None not in ALLOWED_PREDECESSORS[payload["verb"]]:
                 raise PredecessorInvalid("PREDECESSOR_TRANSITION_INVALID", f"{payload['verb']} requires a predecessor")
             if len(preds) > 1:
-                # fan-in join: every lane must have reached SUCCEEDED; one failed/blocked lane blocks the join
-                bad = [p for p, r in zip(preds, pred_rows) if r["status"] != "SUCCEEDED"]
-                if bad:
-                    raise JoinNotReady("JOIN_BLOCKED", f"join lanes not SUCCEEDED: {','.join(bad)}")
+                self._admit_join(payload, preds, pred_rows)
             pred_id = preds[0] if len(preds) == 1 else None  # legacy column keeps the single-parent case queryable
 
             # mission terminal? nothing but replay may follow a terminal mission event
@@ -570,6 +569,29 @@ class Blackboard:
             c.execute("ROLLBACK")
             raise
         return payload
+
+    @staticmethod
+    def _admit_join(payload: Mapping[str, Any], preds: list[str], pred_rows: list[sqlite3.Row]) -> None:
+        """Fan-in admission (SSCM-01B-R1 Part C): HOST VERIFICATION EARNS JOIN ELIGIBILITY.
+
+        Every parent of a multi-predecessor event must be a host-owned verified observation: verb OBSERVE,
+        actor under ``host:``, status SUCCEEDED, binding a full 40-hex candidate revision. The join itself must
+        reference exactly those frozen revisions as REVISION input refs. A SUCCEEDED worker COMPLETE is never
+        join-eligible.
+        """
+        frozen: list[str] = []
+        for pred_id, r in zip(preds, pred_rows):
+            if r["verb"] != "OBSERVE" or not str(r["actor_ref"]).startswith(HOST_ACTOR_PREFIX):
+                raise JoinNotReady("JOIN_PREDECESSOR_UNVERIFIED", f"{pred_id} is {r['verb']} by {r['actor_ref']}, not a host verification")
+            if r["status"] != "SUCCEEDED":
+                raise JoinNotReady("JOIN_BLOCKED", f"join lane not SUCCEEDED: {pred_id}")
+            rev = r["candidate_revision"]
+            if not rev or not REVISION_RE.match(str(rev)):
+                raise JoinNotReady("JOIN_PREDECESSOR_UNVERIFIED", f"{pred_id} carries no full verified candidate revision")
+            frozen.append(rev)
+        referenced = sorted(ref["ref"][4:] for ref in payload.get("input_refs", []) if ref.get("kind") == "REVISION" and str(ref.get("ref", "")).startswith("git:"))
+        if referenced != sorted(frozen):
+            raise JoinNotReady("JOIN_REVISION_MISMATCH", f"join references {referenced}, parents froze {sorted(frozen)}")
 
     def predecessors_of(self, event_id: str) -> list[str]:
         rows = self._conn().execute(
