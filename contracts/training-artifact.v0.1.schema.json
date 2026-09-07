@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sovereign.local/contracts/training-artifact.v0.1.schema.json",
+  "title": "Sovereign Training Artifact v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "training_artifact_id",
+    "source_experience_refs",
+    "promotion_ref",
+    "dataset_digest",
+    "base_model_ref",
+    "training_authorized",
+    "authority"
+  ],
+  "properties": {
+    "schema_version": {"const": "sovereign.training-artifact.v0.1"},
+    "training_artifact_id": {"type": "string", "minLength": 1},
+    "source_experience_refs": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "promotion_ref": {"type": "string", "minLength": 1},
+    "dataset_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "base_model_ref": {"type": "string", "minLength": 1},
+    "training_method": {"type": ["string", "null"]},
+    "provider_ref": {"type": ["string", "null"]},
+    "training_authorized": {"const": false},
+    "authorization_ref": {"type": ["string", "null"]},
+    "authority": {"const": "NONE"}
+  }
+}
