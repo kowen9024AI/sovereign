@@ -64,6 +64,21 @@ class RepairDogfoodSpec(DogfoodSpec):
         max_active_actors=1, max_coordination_transitions=14, max_turns=48, max_model_calls=48,
         max_wall_seconds=1800, max_repair_loops=1, max_consecutive_failures=2, max_token_or_cost_units=800.0,
         required_observable_dimensions=("executor_turns", "token_units", "wall_seconds")))
+    repair_policy: dict[str, Any] = field(default_factory=lambda: {
+        "authority_actor_ref": HOST_ACTOR,
+        "trigger_actor_ref": "evaluator:sscm-holdout-v0.1",
+        "trigger_verb": "REJECT",
+        "trigger_status": "FAILED",
+    })
+    required_terminal_verifications: list[dict[str, Any]] = field(default_factory=lambda: [
+        {
+            "task_id": TASK_REVIEW,
+            "verb": "OBSERVE",
+            "status": "SUCCEEDED",
+            "actor_ref": HOST_ACTOR,
+            "bind_terminal_candidate": True,
+        }
+    ])
 
     def profile(self) -> AcceptanceProfile:
         return AcceptanceProfile(self.profile_id, self.target_file, self.holdout_content, "frozen holdout acceptance for SSCM-01C")
@@ -73,6 +88,8 @@ class RepairDogfoodSpec(DogfoodSpec):
         # coordination state discloses the profile identity and digest, never the holdout content
         d["evaluation_profile"] = {"profile_id": self.profile_id, "profile_digest": self.profile().digest}
         d["envelopes"] = {k: v.as_dict() for k, v in self.envelopes.items()}
+        d["repair_policy"] = dict(self.repair_policy)
+        d["required_terminal_verifications"] = [dict(v) for v in self.required_terminal_verifications]
         d["required_terminal_tasks"] = [TASK_REVIEW]
         return d
 
@@ -87,11 +104,30 @@ def repair_projection(bb: Blackboard, run_dir: RunDir, mission_id: str) -> dict[
     history: list[dict[str, Any]] = []
     current: str | None = None
     authorized = consumed = 0
+    m = bb.mission(mission_id)
+    spec = m.get("spec", {})
+    repair_policy = spec.get("repair_policy", {})
+    auth_actor = repair_policy.get("authority_actor_ref")
+    exp_verb = repair_policy.get("trigger_verb", "REJECT")
+    exp_status = repair_policy.get("trigger_status", "FAILED")
+    exp_trigger_actor = repair_policy.get("trigger_actor_ref")
+
     for e in events:
         if e["verb"] == "OBSERVE" and str(e["actor_ref"]).startswith("host:") and e["task_id"] == TASK_IMPLEMENT and e.get("candidate_revision"):
             current = e["candidate_revision"]
         if e["verb"] == "RETRY":
-            authorized += 1
+            is_authorized = False
+            if auth_actor and e.get("actor_ref") == auth_actor:
+                preds = bb.predecessors_of(e["event_id"])
+                if len(preds) == 1:
+                    p_ev = bb.get_event(preds[0])
+                    if p_ev:
+                        if p_ev.get("verb") == exp_verb and p_ev.get("status") == exp_status:
+                            if not exp_trigger_actor or p_ev.get("actor_ref") == exp_trigger_actor:
+                                if e.get("candidate_revision") == p_ev.get("candidate_revision"):
+                                    is_authorized = True
+            if is_authorized:
+                authorized += 1
         if e["verb"] == "CLAIM" and e["task_id"] == TASK_IMPLEMENT and any(bb.get_event(p)["verb"] == "RETRY" for p in bb.predecessors_of(e["event_id"])):
             consumed += 1
         if str(e["actor_ref"]).startswith("evaluator:"):
@@ -164,6 +200,8 @@ class RepairMissionController(ReservedV2RunsMixin, MissionController):
         super().__init__(spec, dict(executors), **kw)
         self.spec: RepairDogfoodSpec = spec
         self.evaluator = evaluator
+        if "trigger_actor_ref" in self.spec.repair_policy and self.spec.repair_policy["trigger_actor_ref"] == "evaluator:sscm-holdout-v0.1":
+            self.spec.repair_policy["trigger_actor_ref"] = self.evaluator.evaluator_id
         self.checkpoints = set(checkpoints or ())
         self.report["repair"] = {"evaluations": [], "lanes": {}}
         self._lane_facts: dict[str, WorkspaceFacts] = {}
