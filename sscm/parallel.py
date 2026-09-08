@@ -98,20 +98,12 @@ class ParallelDogfoodSpec(DogfoodSpec):
         return d
 
 
-class ParallelMissionController(MissionController):
-    ROLES = PARALLEL_ROLES
+class ReservedV2RunsMixin:
+    """v0.2 events, host-frozen reservations, settlement and session/run identity custody.
 
-    def __init__(self, spec: ParallelDogfoodSpec, executors: Mapping[str, Executor], **kw: Any) -> None:
-        missing = [r for r in PARALLEL_ROLES if r not in executors]
-        if missing:
-            raise ValueError(f"executors missing for roles {missing}")
-        # bypass the serial base's role check by handing it the roles it expects under their names
-        base_map = dict(executors)
-        base_map.setdefault("IMPLEMENTER", executors["WORKER_A"])
-        super().__init__(spec, base_map, **kw)
-        self.executors = dict(executors)
-        self.spec: ParallelDogfoodSpec = spec
-        self.report["parallel"] = {}
+    Shared by the parallel (01B) and repair (01C) controllers; the serial 01A controller is untouched.
+    Requires the host MissionController surface (bb, run, spec, executors, report, _elapsed, _remaining_seconds).
+    """
 
     # -- v0.2 events ---------------------------------------------------------------------------
 
@@ -144,7 +136,7 @@ class ParallelMissionController(MissionController):
             self.bb.reserve_wave(self.mission_id, wave_id, entries, elapsed_wall_seconds=self._elapsed())
         except BudgetExceeded as ex:
             raise MissionAborted("BUDGET_EXCEEDED", f"wave {wave_id} not admitted: {ex.detail}") from ex
-        self.report["parallel"].setdefault("waves", {})[wave_id] = {"roles": roles, "run_ids": run_ids, "envelopes": {r: self.spec.envelopes[r].as_dict() for r in roles}}
+        self.report.setdefault("parallel", {}).setdefault("waves", {})[wave_id] = {"roles": roles, "run_ids": run_ids, "envelopes": {r: self.spec.envelopes[r].as_dict() for r in roles}}
         return run_ids
 
     def _task_for(self, role: str, run_id: str, instruction: dict[str, Any], schema_path: Path, cwd: Path,
@@ -201,12 +193,29 @@ class ParallelMissionController(MissionController):
         return str(run.session_ref)
 
     def _record_identity(self, role: str, run: ExecutorRun) -> None:
-        ids = self.report["parallel"].setdefault("identity", {"run_ids": {}, "session_refs": {}})
+        ids = self.report.setdefault("parallel", {}).setdefault("identity", {"run_ids": {}, "session_refs": {}})
         ids["run_ids"][role] = run.run_id
         ids["session_refs"][role] = run.session_ref
         seen = [r for r, rid in ids["run_ids"].items() if rid == run.run_id and r != role]
         if seen:
             raise MissionAborted("RUN_ID_COLLISION", f"{role} run id equals {seen[0]}", DISPOSITION_PARALLEL_BLOCKED)
+
+
+
+class ParallelMissionController(ReservedV2RunsMixin, MissionController):
+    ROLES = PARALLEL_ROLES
+
+    def __init__(self, spec: ParallelDogfoodSpec, executors: Mapping[str, Executor], **kw: Any) -> None:
+        missing = [r for r in PARALLEL_ROLES if r not in executors]
+        if missing:
+            raise ValueError(f"executors missing for roles {missing}")
+        # bypass the serial base's role check by handing it the roles it expects under their names
+        base_map = dict(executors)
+        base_map.setdefault("IMPLEMENTER", executors["WORKER_A"])
+        super().__init__(spec, base_map, **kw)
+        self.executors = dict(executors)
+        self.spec: ParallelDogfoodSpec = spec
+        self.report["parallel"] = {}
 
     # -- the frozen DAG ------------------------------------------------------------------------
 

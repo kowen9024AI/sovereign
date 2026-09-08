@@ -1,0 +1,119 @@
+{
+  "reservations": {
+    "active": {
+      "executor_turns": 0,
+      "model_calls": 0,
+      "token_units": 0,
+      "wall_seconds": 0
+    },
+    "reservations": [
+      {
+        "canonical_digest": "a4a76bf8874c133f666c2bd00ddf400473d1fbada9833af976216ee7a84318b1",
+        "created_at": "2026-09-07T18:01:20.439Z",
+        "executor_turns": 6,
+        "mission_id": "mission-sscm-01c-live-1",
+        "model_calls": null,
+        "reservation_id": "res:wave-coordinator:coordinator",
+        "role": "COORDINATOR",
+        "run_id": "run:coordinator-5eecedfd-643f-4e47-8379-d5bbc10f1c94",
+        "settled_at": "2026-09-07T18:01:38.150Z",
+        "state": "SETTLED",
+        "usage_units": 60.0,
+        "wall_seconds": 600.0,
+        "wave_id": "wave-coordinator"
+      },
+      {
+        "canonical_digest": "32e8e7fd97d368bbfdda86469082200ae2e940d256f87543f261b7596d1deedc",
+        "created_at": "2026-09-07T18:01:38.566Z",
+        "executor_turns": 10,
+        "mission_id": "mission-sscm-01c-live-1",
+        "model_calls": null,
+        "reservation_id": "res:wave-implementer:implementer",
+        "role": "IMPLEMENTER",
+        "run_id": "run:implementer-8f9659a4-7f69-42a3-b1e8-f88ff013ec32",
+        "settled_at": "2026-09-07T18:10:19.160Z",
+        "state": "SETTLED",
+        "usage_units": 200.0,
+        "wall_seconds": 900.0,
+        "wave_id": "wave-implementer"
+      },
+      {
+        "canonical_digest": "51acbde0c3665d1259db39224c4b073b52e41da17bc1ab8377dc2e4fa721b4b7",
+        "created_at": "2026-09-07T18:10:20.423Z",
+        "executor_turns": 10,
+        "mission_id": "mission-sscm-01c-live-1",
+        "model_calls": null,
+        "reservation_id": "res:wave-repair_implementer:repair_implementer",
+        "role": "REPAIR_IMPLEMENTER",
+        "run_id": "run:repair_implementer-a6b4e7f9-bd8a-47cd-ac52-130ab79eddd2",
+        "settled_at": "2026-09-07T18:11:05.015Z",
+        "state": "SETTLED",
+        "usage_units": 200.0,
+        "wall_seconds": 900.0,
+        "wave_id": "wave-repair_implementer"
+      },
+      {
+        "canonical_digest": "918c3ad225bd1798c02873c4aff36de9e74f95503ba6c95cb90ee2055ac05576",
+        "created_at": "2026-09-07T18:11:05.679Z",
+        "executor_turns": 16,
+        "mission_id": "mission-sscm-01c-live-1",
+        "model_calls": null,
+        "reservation_id": "res:wave-reviewer:reviewer",
+        "role": "REVIEWER",
+        "run_id": "run:reviewer-fd88b4dc-5cb2-4ef4-86ac-a75be8adebdf",
+        "settled_at": "2026-09-07T18:12:16.197Z",
+        "state": "SETTLED",
+        "usage_units": 300.0,
+        "wall_seconds": 900.0,
+        "wave_id": "wave-reviewer"
+      }
+    ],
+    "states": {
+      "res:wave-coordinator:coordinator": "SETTLED",
+      "res:wave-implementer:implementer": "SETTLED",
+      "res:wave-repair_implementer:repair_implementer": "SETTLED",
+      "res:wave-reviewer:reviewer": "SETTLED"
+    }
+  },
+  "usage": {
+    "budget_dimensions_observable": {
+      "cost_units": "UNKNOWN",
+      "executor_turns": "OBSERVED",
+      "model_calls": "UNKNOWN",
+      "token_units": "OBSERVED",
+      "wall_seconds": "OBSERVED"
+    },
+    "budget_exceeded": [],
+    "budget_limits": {
+      "max_active_actors": 1,
+      "max_consecutive_failures": 2,
+      "max_coordination_transitions": 14,
+      "max_model_calls": 48,
+      "max_repair_loops": 1,
+      "max_token_or_cost_units": 800.0,
+      "max_turns": 48,
+      "max_wall_seconds": 1800,
+      "required_observable_dimensions": [
+        "executor_turns",
+        "token_units",
+        "wall_seconds"
+      ]
+    },
+    "observed_cost_or_token_units": 352.112,
+    "observed_cost_usd_evidence_only": 0.742,
+    "observed_executor_runs": 4,
+    "observed_executor_turns": 17,
+    "observed_model_calls": 15,
+    "observed_wall_seconds": 650.266,
+    "unknown_runs_by_dimension": {
+      "cost_units": [
+        "run:implementer-8f9659a4-7f69-42a3-b1e8-f88ff013ec32",
+        "run:repair_implementer-a6b4e7f9-bd8a-47cd-ac52-130ab79eddd2"
+      ],
+      "model_calls": [
+        "run:implementer-8f9659a4-7f69-42a3-b1e8-f88ff013ec32",
+        "run:repair_implementer-a6b4e7f9-bd8a-47cd-ac52-130ab79eddd2"
+      ]
+    }
+  }
+}

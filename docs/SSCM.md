@@ -203,6 +203,24 @@ python3 -m sscm.local_cli dogfood-parallel --executors mock --base $(git rev-par
 python3 -m sscm.local_cli dogfood-parallel --executors live --base <canonical-sha>         # Claude + 2x Codex + Claude
 ```
 
+## Bounded repair with independent evaluation (SSCM-01C)
+
+`evaluation/` produces frozen `evaluation.v0.1` objects about exact host-verified revisions. The reference
+evaluator `evaluator:sscm-holdout-v0.1` is deterministic, model-free and read-only. An evaluation FAIL makes a
+candidate repair-*eligible*; only the host repair gate (disposition FAIL, candidate bound, zero loops consumed,
+budget headroom for the frozen repair envelope, digest-verified refs, findings within the allowed files, evidence
+scan CLEAN) authorizes it through a host-owned `RETRY` that consumes `max_repair_loops`. BLOCKED and INCONCLUSIVE
+never repair. The repair runs as a fresh executor session in a fresh lane based on the failed candidate, the
+identical profile re-evaluates, and only a PASS admits the independent reviewer; mission success additionally
+requires the host-verified review task (`FINAL_REVIEW_REQUIRED`). The failed first evaluation is retained in the
+experience: the accepted trajectory is FAIL → one governed repair → PASS. PASS never earns promotion. Live proof:
+[`work-orders/WO-SOVEREIGN-SSCM-01C-REPORT.md`](work-orders/WO-SOVEREIGN-SSCM-01C-REPORT.md).
+
+```bash
+python3 -m sscm.local_cli dogfood-repair --executors mock --base $(git rev-parse HEAD)   # offline
+python3 -m sscm.local_cli dogfood-repair --executors live --base <canonical-sha>         # Claude, Codex x2 fresh, Claude
+```
+
 ## Revision authority
 
 Structured results may carry a revision only as a full 40-hex Git object id, compared for exact equality with

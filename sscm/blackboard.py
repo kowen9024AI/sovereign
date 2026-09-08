@@ -89,6 +89,31 @@ class MissionUnknown(BlackboardError):
         super().__init__("MISSION_UNKNOWN", mission_id)
 
 
+class RetryAuthorityUnconfigured(BlackboardError):
+    def __init__(self, detail: str = "mission has no configured repair authority") -> None:
+        super().__init__("RETRY_AUTHORITY_UNCONFIGURED", detail)
+
+
+class RetryActorNotAuthorized(BlackboardError):
+    def __init__(self, actor_ref: str, expected: str) -> None:
+        super().__init__("RETRY_ACTOR_NOT_AUTHORIZED", f"actor {actor_ref} is not configured repair authority {expected}")
+
+
+class RetryTriggerInvalid(BlackboardError):
+    def __init__(self, detail: str) -> None:
+        super().__init__("RETRY_TRIGGER_INVALID", detail)
+
+
+class RetryCandidateMismatch(BlackboardError):
+    def __init__(self, retry_rev: Any, pred_rev: Any) -> None:
+        super().__init__("RETRY_CANDIDATE_MISMATCH", f"RETRY candidate {retry_rev} does not match trigger candidate {pred_rev}")
+
+
+class TerminalCandidateReviewMismatch(BlackboardError):
+    def __init__(self, task_id: str, review_rev: Any, mission_rev: Any) -> None:
+        super().__init__("TERMINAL_CANDIDATE_REVIEW_MISMATCH", f"task {task_id} candidate {review_rev} does not match mission candidate {mission_rev}")
+
+
 # --------------------------------------------------------------------------
 # Mission budget (frozen structure, section 15)
 # --------------------------------------------------------------------------
@@ -179,7 +204,7 @@ ALLOWED_PREDECESSORS: dict[str, frozenset[str | None]] = {
     "CLAIM": frozenset({"PUBLISH", "OBSERVE", "RETRY"}),
     "COMPLETE": frozenset({"CLAIM", "OBSERVE", "COMPLETE"}),
     "OBSERVE": frozenset({"PUBLISH", "CLAIM", "COMPLETE", "OBSERVE"}),
-    "REJECT": frozenset({None, "PUBLISH", "CLAIM", "COMPLETE", "OBSERVE", "REJECT"}),
+    "REJECT": frozenset({None, "PUBLISH", "CLAIM", "COMPLETE", "OBSERVE", "REJECT", "RETRY"}),
     "RETRY": frozenset({"REJECT", "COMPLETE"}),
     "CANCEL": frozenset({None, "PUBLISH", "CLAIM", "COMPLETE", "OBSERVE", "REJECT", "RETRY"}),
 }
@@ -349,6 +374,8 @@ def project(mission_id: str, budget: Mapping[str, Any], events: Iterable[Mapping
             t.claimed_by = e["actor_ref"]
             t.executor_ref = e.get("executor_ref")
             t.workspace_ref = e.get("workspace_ref")
+        if e["verb"] == "RETRY":  # host re-opened the task: prior claimant no longer holds it
+            t.claimed_by = None
         if e["verb"] in ("CLAIM", "COMPLETE"):
             proj.coordination_transitions += 1
         if e["status"] == "FAILED" or e["verb"] == "REJECT":
@@ -471,10 +498,11 @@ class Blackboard:
         c = self._conn()
         c.execute("BEGIN IMMEDIATE")
         try:
-            mission_row = c.execute("SELECT budget_json FROM missions WHERE mission_id=?", (payload["mission_id"],)).fetchone()
+            mission_row = c.execute("SELECT budget_json, spec_json FROM missions WHERE mission_id=?", (payload["mission_id"],)).fetchone()
             if mission_row is None:
                 raise MissionUnknown(payload["mission_id"])
             budget = MissionBudget.from_dict(json.loads(mission_row["budget_json"]))
+            spec = json.loads(mission_row["spec_json"])
 
             # idempotency
             existing = c.execute(
@@ -540,6 +568,44 @@ class Blackboard:
                     "INSERT INTO claims(mission_id, task_id, actor_ref, event_id) VALUES (?,?,?,?)",
                     (payload["mission_id"], payload["task_id"], payload["actor_ref"], payload["event_id"]),
                 )
+            if payload["verb"] == "RETRY":
+                # Store-level RETRY admission checks (WO-SOVEREIGN-SSCM-01C-R1 Part B)
+                repair_policy = spec.get("repair_policy")
+                if not repair_policy or not repair_policy.get("authority_actor_ref"):
+                    raise RetryAuthorityUnconfigured("mission has no configured repair authority")
+
+                auth_actor = repair_policy["authority_actor_ref"]
+                if payload["actor_ref"] != auth_actor:
+                    raise RetryActorNotAuthorized(payload["actor_ref"], auth_actor)
+
+                if len(preds) != 1:
+                    raise RetryTriggerInvalid(f"RETRY must have exactly 1 predecessor, got {len(preds)}")
+                pred = pred_rows[0]
+                exp_verb = repair_policy.get("trigger_verb", "REJECT")
+                exp_status = repair_policy.get("trigger_status", "FAILED")
+                exp_trigger_actor = repair_policy.get("trigger_actor_ref")
+                if pred["verb"] != exp_verb or pred["status"] != exp_status:
+                    raise RetryTriggerInvalid(
+                        f"predecessor {preds[0]} has verb {pred['verb']}, status {pred['status']}; expected {exp_verb} {exp_status}"
+                    )
+                if exp_trigger_actor and pred["actor_ref"] != exp_trigger_actor:
+                    raise RetryTriggerInvalid(
+                        f"predecessor {preds[0]} actor {pred['actor_ref']} does not match configured trigger actor {exp_trigger_actor}"
+                    )
+
+                retry_cand = payload.get("candidate_revision")
+                pred_cand = pred["candidate_revision"]
+                if retry_cand != pred_cand:
+                    raise RetryCandidateMismatch(retry_cand, pred_cand)
+                if retry_cand is not None:
+                    if not isinstance(retry_cand, str) or not REVISION_RE.match(retry_cand):
+                        raise RetryCandidateMismatch(retry_cand, "not a full 40-hex SHA")
+                if pred_cand is not None:
+                    if not isinstance(pred_cand, str) or not REVISION_RE.match(pred_cand):
+                        raise RetryCandidateMismatch(pred_cand, "not a full 40-hex SHA")
+
+                # a host RETRY re-opens the task for a fresh claimant; the prior custody stays in the event history
+                c.execute("DELETE FROM claims WHERE mission_id=? AND task_id=?", (payload["mission_id"], payload["task_id"]))
 
             # a mission-level SUCCEEDED completion needs host observation and no task still active
             if payload["task_id"] == payload["mission_id"] and payload["verb"] == "COMPLETE" and payload["status"] == "SUCCEEDED":
@@ -548,6 +614,55 @@ class Blackboard:
                 active = [t.task_id for t in proj.tasks.values() if t.task_id != payload["mission_id"] and t.status in ("ACTIVE", "PENDING")]
                 if active:
                     raise BlackboardError("MISSION_COMPLETE_WITH_ACTIVE_TASKS", ",".join(sorted(active)))
+                # the mission spec may declare structured terminal verifications (01C-R1 Part C)
+                # or legacy required_terminal_tasks: an evaluation PASS alone can never terminal-succeed a mission
+                verified_tasks: set[str] = set()
+                if "required_terminal_verifications" in spec:
+                    for rule in spec["required_terminal_verifications"]:
+                        req_task = rule["task_id"]
+                        verified_tasks.add(req_task)
+                        req_verb = rule.get("verb", "OBSERVE")
+                        req_status = rule.get("status", "SUCCEEDED")
+                        req_actor = rule.get("actor_ref")
+                        bind_cand = rule.get("bind_terminal_candidate", False)
+                        err_code = "FINAL_REVIEW_REQUIRED" if "review" in req_task else "REQUIRED_TASK_UNVERIFIED"
+
+                        t = proj.tasks.get(req_task)
+                        if t is None or not t.last_event_id:
+                            raise BlackboardError(err_code, f"mission COMPLETE requires verified task {req_task}")
+
+                        last_ev = c.execute(
+                            "SELECT verb, status, actor_ref, candidate_revision FROM events WHERE event_id=?",
+                            (t.last_event_id,),
+                        ).fetchone()
+                        if last_ev["verb"] != req_verb:
+                            raise BlackboardError(err_code, f"task {req_task} last verb is {last_ev['verb']}, expected {req_verb}")
+                        if last_ev["status"] != req_status:
+                            raise BlackboardError(err_code, f"task {req_task} status is {last_ev['status']}, expected {req_status}")
+                        if req_actor and last_ev["actor_ref"] != req_actor:
+                            raise BlackboardError(err_code, f"task {req_task} verified by {last_ev['actor_ref']}, expected {req_actor}")
+                        if bind_cand:
+                            review_rev = last_ev["candidate_revision"]
+                            mission_rev = payload.get("candidate_revision")
+                            if (
+                                not review_rev
+                                or not mission_rev
+                                or not isinstance(review_rev, str)
+                                or not isinstance(mission_rev, str)
+                                or not REVISION_RE.match(review_rev)
+                                or not REVISION_RE.match(mission_rev)
+                                or review_rev != mission_rev
+                            ):
+                                raise TerminalCandidateReviewMismatch(req_task, review_rev, mission_rev)
+
+                for required in spec.get("required_terminal_tasks", []):
+                    if required not in verified_tasks:
+                        t = proj.tasks.get(required)
+                        if t is None or t.status != "SUCCEEDED" or t.last_verb != "OBSERVE":
+                            raise BlackboardError(
+                                "FINAL_REVIEW_REQUIRED" if "review" in required else "REQUIRED_TASK_UNVERIFIED",
+                                f"mission COMPLETE requires host-verified SUCCEEDED task {required}",
+                            )
 
             c.execute(
                 """INSERT INTO events(event_id, mission_id, task_id, predecessor_event_id, verb, actor_ref,

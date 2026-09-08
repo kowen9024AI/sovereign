@@ -1,0 +1,32 @@
+{
+  "authority": "NONE",
+  "current_candidate_sha": "2a93e1d66b7a3c3edb4dc069e0fe2ff5c3d97f06",
+  "evaluation_history": [
+    {
+      "candidate_ref": "git:6edb3a2ac4dd1ce7a2595fe47c5ba8d8c7a47f21",
+      "disposition": "FAIL",
+      "evaluation_id": "eval:ca370a16-a94f-4c23-a5a8-2d4194a50d88",
+      "event_id": "evt-5168f63d-0adc-48d3-b3ec-34a1badf5054",
+      "ref": {
+        "kind": "TEST_RESULT",
+        "ref": "run:mission-sscm-01c-live-1:artifacts/evaluation-1.json",
+        "sha256": "17ae6f3b26d4452b0e3f631741e071f80a80270a7b792825bf8fe5cc0ce0dc54"
+      }
+    },
+    {
+      "candidate_ref": "git:2a93e1d66b7a3c3edb4dc069e0fe2ff5c3d97f06",
+      "disposition": "PASS",
+      "evaluation_id": "eval:e76a438d-a6ba-48ea-bd97-37beaef4eb94",
+      "event_id": "evt-a58af683-7ba6-400b-9966-ad76587b6b0e",
+      "ref": {
+        "kind": "TEST_RESULT",
+        "ref": "run:mission-sscm-01c-live-1:artifacts/evaluation-2.json",
+        "sha256": "822b25265c43b8ffea0a60b5b03fb0e07a8e3c087cf66bba5befd3d6033c765a"
+      }
+    }
+  ],
+  "last_evaluation_disposition": "PASS",
+  "last_evaluation_id": "eval:e76a438d-a6ba-48ea-bd97-37beaef4eb94",
+  "repair_attempts_authorized": 1,
+  "repair_attempts_consumed": 1
+}

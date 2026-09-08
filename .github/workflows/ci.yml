@@ -37,3 +37,8 @@ jobs:
           python -m sscm.local_cli dogfood-parallel --executors mock --canonical . --base "$(git rev-parse HEAD)" --mission-id ci-mock-parallel
           test -z "$(git branch --list 'dogfood/*')"
           test "$(git worktree list | wc -l)" = "1"
+      - name: sscm offline repair dogfood (mock roster, deterministic evaluator FAIL -> RETRY -> PASS -> review)
+        run: |
+          python -m sscm.local_cli dogfood-repair --executors mock --canonical . --base "$(git rev-parse HEAD)" --mission-id ci-mock-repair
+          test -z "$(git branch --list 'dogfood/*')"
+          test "$(git worktree list | wc -l)" = "1"
